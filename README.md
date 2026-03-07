@@ -2,7 +2,7 @@
 
 Turn any article, blog post, URL, or PowerPoint into a narrated MP4 video — just tell Claude what you want.
 
-**Output:** 1080p video with animated slides, code blocks, diagrams, and AI voiceover (ElevenLabs).
+**Output:** 1080p video with animated slides, syntax-highlighted code, diagrams, and AI voiceover (ElevenLabs).
 
 ---
 
@@ -26,8 +26,17 @@ npm install
 
 ### 2. Add your API key
 
-Create a `.env` file in the project folder with your ElevenLabs API key:
+**Windows (Command Prompt):**
+```cmd
+copy .env.example .env
+```
 
+**macOS / Linux:**
+```bash
+cp .env.example .env
+```
+
+Open `.env` and add your ElevenLabs API key:
 ```
 ELEVENLABS_API_KEY=your_key_here
 ```
@@ -41,12 +50,17 @@ ELEVENLABS_API_KEY=your_key_here
 Copy-Item -Recurse -Force .claude\plugins\educational-video "$env:USERPROFILE\.claude\plugins\educational-video"
 ```
 
+**Windows (Command Prompt):**
+```cmd
+xcopy /E /I /Y .claude\plugins\educational-video "%USERPROFILE%\.claude\plugins\educational-video"
+```
+
 **macOS / Linux:**
 ```bash
 mkdir -p ~/.claude/plugins && cp -r .claude/plugins/educational-video ~/.claude/plugins/
 ```
 
-That's it. Claude handles everything else — voice selection, script writing, audio generation, and rendering.
+That's it. Claude handles the rest — finding the pipeline, selecting voices, writing scripts, generating audio, and rendering.
 
 ---
 
@@ -58,35 +72,72 @@ Open Claude Code from **any directory** and say:
 > "Create a video from this article: [URL]"
 > "Make a video from my PowerPoint: [path/to/file.pptx]"
 
-Claude will ask two quick questions (language + theme), show you a preview of the slide plan, let you make changes, then generate and render the video automatically.
+Claude will:
+1. Find your pipeline installation automatically
+2. Check your setup (Node.js, API key, voice)
+3. Read your source content
+4. Ask two questions: narration language + light/dark theme
+5. Generate a structured slide script (15–30 slides)
+6. Show you a preview — make changes or approve
+7. Generate ElevenLabs voice narration (with live progress)
+8. Render the final MP4 (with live progress)
 
 **Output:** `output/<video-title>.mp4`
 
 ---
 
-## Manual usage (advanced)
+## Features
 
-If you prefer to work directly:
+### 9 slide types
+| Type | Description |
+|------|-------------|
+| `title` | Opening slide with title + subtitle |
+| `section-header` | Section divider with stage number |
+| `concept` | Bullet points with optional highlight quote |
+| `code` | Syntax-highlighted code block |
+| `diagram` | Box-and-arrow architecture diagram |
+| `flow` | Horizontal step-by-step flow |
+| `table` | Comparison table |
+| `image` | Full-screen image (used for PPTX slides) |
+| `outro` | Closing slide with evolution summary |
 
-```bash
-# Edit the slide script
-# content/video-script.json — see .claude/plugins/educational-video/skills/educational-video/references/ for schema and examples
+### PowerPoint / PPTX support
+- Converts each slide to a PNG image — your original design is preserved
+- Extracts speaker notes and offers to use them as narration
+- After the video is done, offers to write the AI narration back into the PPTX as slide notes
+- Requires [LibreOffice](https://www.libreoffice.org) (free) or Microsoft Office
 
-# Generate audio
-npm run generate-audio
+### Smart setup wizard
+- Claude finds your pipeline installation automatically (env var, current dir, saved config, common locations)
+- Walks you through Node.js, API keys, and voice selection on first run
+- Saves your pipeline path so it never asks again
 
-# Render
-npx remotion render EducationalVideo output/my-video.mp4
+### Script preview and editing
+- Before generating audio, Claude shows a full slide-by-slide breakdown
+- Shows the complete `video-script.json` inline for review
+- You can request changes in plain language or edit the JSON directly
 
-# Preview in browser
-npm run dev
-```
+### Live progress during generation
+- Audio generation polls the log every 10–15s and shows which slide is being processed
+- Video render polls every 15s and shows frame progress
 
 ---
 
-## PowerPoint support
+## Manual usage (advanced)
 
-Claude will export your PPTX to images and use them as video frames (your original slide design is preserved). Requires [LibreOffice](https://www.libreoffice.org) (free) or Microsoft Office.
+```bash
+# Preview in Remotion Studio (browser)
+npm run dev
+
+# Generate audio only
+npm run generate-audio
+
+# Render video
+npx remotion render EducationalVideo output/my-video.mp4
+```
+
+Edit `content/video-script.json` directly. Schema and examples are in:
+`.claude/plugins/educational-video/skills/educational-video/references/`
 
 ---
 
