@@ -28,11 +28,17 @@ npm install
 
 ### 2. Configure API keys
 
+**Windows (Command Prompt):**
+```cmd
+copy .env.example .env
+```
+
+**macOS / Linux:**
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in:
+Open `.env` in any text editor and fill in:
 
 ```
 ELEVENLABS_API_KEY=your_key_here
@@ -48,21 +54,28 @@ ELEVENLABS_VOICE_ID=your_voice_id_here
 ```bash
 npx tsx scripts/list-voices.ts
 ```
-Pick a voice name from the list — copy its ID into `.env`.
+Pick a voice from the list and paste its ID into `.env`.
 
-### 3. Install the Claude Code skill (global)
+### 3. Install the Claude Code skill
 
-Copy the plugin to your Claude config directory so the skill is available from any session:
+This copies the skill to your global Claude config so it's available in every Claude Code session, from any directory.
 
-**Windows:**
+**Windows (PowerShell):**
+```powershell
+Copy-Item -Recurse -Force .claude\plugins\educational-video "$env:USERPROFILE\.claude\plugins\educational-video"
 ```
-xcopy /E /I .claude\plugins\educational-video "%USERPROFILE%\.claude\plugins\educational-video"
+
+**Windows (Command Prompt):**
+```cmd
+xcopy /E /I /Y .claude\plugins\educational-video "%USERPROFILE%\.claude\plugins\educational-video"
 ```
 
 **macOS / Linux:**
 ```bash
-cp -r .claude/plugins/educational-video ~/.claude/plugins/educational-video
+mkdir -p ~/.claude/plugins && cp -r .claude/plugins/educational-video ~/.claude/plugins/
 ```
+
+To verify it worked, open Claude Code anywhere and type: `"make me a video"` — the skill should activate.
 
 ---
 
