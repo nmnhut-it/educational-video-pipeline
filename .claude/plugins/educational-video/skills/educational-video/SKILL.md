@@ -10,70 +10,84 @@ Trigger this skill when the user says anything like:
 - "turn this into a video"
 - "convert my slides to video", "make a video from my PowerPoint", "video from my pptx"
 
-## Pipeline Directory
-
-All commands run from: `D:\2ps-workspace\blog-video-pipeline`
-
 ---
 
 ## Phase 0 — Setup Check
 
-Run these checks automatically at the start of every session. Guide the user through any failure before continuing.
+### Step 0a — Resolve PIPELINE_DIR
 
-### Check 1: Node.js
+Every command in this skill uses `$PIPELINE_DIR`. Resolve it once at the start, in this order:
 
+1. **Env var set?** Check if `EDUCATIONAL_VIDEO_PIPELINE` is in the environment → use it.
+
+2. **Current directory is the pipeline?** Check if `remotion.config.ts` exists in the current working directory → use `.` (current dir).
+
+3. **Saved config?** Read `~/.claude/plugins/educational-video/config.json` if it exists → use the `pipelineDir` value.
+
+4. **Search common locations:**
+   - `~/educational-video-pipeline`
+   - `~/Documents/educational-video-pipeline`
+   - `~/Downloads/educational-video-pipeline`
+   - `~/Desktop/educational-video-pipeline`
+   Check each for `remotion.config.ts`.
+
+5. **Ask the user:**
+   > Where did you install the educational video pipeline? Please paste the full folder path.
+   > (It's the folder containing `remotion.config.ts` and `package.json`)
+
+6. **Save for next time:** once resolved, write to `~/.claude/plugins/educational-video/config.json`:
+   ```json
+   { "pipelineDir": "<resolved-path>" }
+   ```
+
+All subsequent commands use `$PIPELINE_DIR` as the resolved absolute path.
+
+---
+
+### Step 0b — Environment Checks
+
+Run these in order. Stop and guide the user on first failure.
+
+**Check 1: Node.js**
 ```bash
 node --version
 ```
+If not found:
+> Node.js isn't installed yet:
+> 1. Go to https://nodejs.org → click "Download Node.js (LTS)"
+> 2. Run the installer, click Next through all steps
+> 3. Reopen your terminal and run `node --version` to confirm
 
-If command not found, guide the user:
+**Check 2: npm packages**
 
-> Node.js isn't installed yet. Here's how to get it:
-> 1. Go to https://nodejs.org and click "Download Node.js (LTS)"
-> 2. Run the installer — click Next through all steps
-> 3. Close and reopen your terminal
-> 4. Type `node --version` to confirm it worked
-
-### Check 2: npm packages
-
-Check if `D:\2ps-workspace\blog-video-pipeline\node_modules` exists. If missing:
-
+Check if `$PIPELINE_DIR/node_modules` exists. If missing:
 ```bash
-cd D:/2ps-workspace/blog-video-pipeline && npm install
+cd "$PIPELINE_DIR" && npm install
 ```
+Tell the user: `"Installing dependencies... (one-time, ~1 minute)"`
 
-Tell the user: `"Installing dependencies... (one-time, takes ~1 minute)"`
+**Check 3: ElevenLabs API key**
 
-### Check 3: ElevenLabs API key
+Read `$PIPELINE_DIR/.env`. Check for `ELEVENLABS_API_KEY` with a real value (not empty/placeholder).
 
-Read `D:\2ps-workspace\blog-video-pipeline\.env`. Check for `ELEVENLABS_API_KEY` with a real value.
-
-If missing or a placeholder, guide the user:
-
+If missing:
 > You need an ElevenLabs API key for voice narration:
-> 1. Go to https://elevenlabs.io and create a free account
-> 2. Click your avatar (top right) → Profile
-> 3. Scroll to "API Keys" → click "Create API Key"
-> 4. Copy the key and add this line to your `.env` file:
+> 1. Go to https://elevenlabs.io → create a free account
+> 2. Click your avatar → Profile → API Keys → Create API Key
+> 3. Add this line to `$PIPELINE_DIR/.env`:
 >    `ELEVENLABS_API_KEY=your_key_here`
 >
-> The free tier gives you 10,000 characters/month (~2-3 videos).
+> Free tier: 10,000 characters/month (~2–3 videos)
 
-### Check 4: Voice ID
+**Check 4: Voice ID**
 
-Read `.env` for `ELEVENLABS_VOICE_ID`. If missing or empty:
-
+Read `$PIPELINE_DIR/.env` for `ELEVENLABS_VOICE_ID`. If missing or empty:
 ```bash
-cd D:/2ps-workspace/blog-video-pipeline && npx tsx scripts/list-voices.ts
+cd "$PIPELINE_DIR" && npx tsx scripts/list-voices.ts
 ```
+Show the list and ask the user to pick one. Write the chosen ID to `.env` as `ELEVENLABS_VOICE_ID=<id>`.
 
-Show the voice list and ask:
-
-> Which voice would you like for narration? Pick one from the list above.
-
-Then write the chosen voice ID to `.env` as `ELEVENLABS_VOICE_ID=<id>`.
-
-**If all 4 checks pass, skip Phase 0 output entirely — don't mention it.**
+**If all checks pass, skip Step 0b output entirely — don't mention it.**
 
 ---
 
@@ -92,7 +106,7 @@ Then:
 - URL → use WebFetch
 - File path (.txt/.md/.json) → use Read tool
 - PPTX path → Phase 1b
-- Pasted text or topic → proceed directly
+- Pasted text or topic → proceed directly to Phase 2
 
 ### Phase 1b — PPTX to Images
 
@@ -100,33 +114,49 @@ Then:
 
    - **LibreOffice found:**
      ```bash
-     mkdir -p D:/2ps-workspace/blog-video-pipeline/public/pptx-slides
-     soffice --headless --convert-to png --outdir D:/2ps-workspace/blog-video-pipeline/public/pptx-slides/ "<pptx-path>"
+     mkdir -p "$PIPELINE_DIR/public/pptx-slides"
+     soffice --headless --convert-to png --outdir "$PIPELINE_DIR/public/pptx-slides/" "<pptx-path>"
      ```
+     Note: LibreOffice does NOT extract speaker notes. Skip the notes check below.
 
    - **LibreOffice not found:** use PowerShell (requires Microsoft Office):
      ```bash
-     powershell -ExecutionPolicy Bypass -File "D:/2ps-workspace/blog-video-pipeline/scripts/pptx-to-images.ps1" -PptxPath "<pptx-path>" -OutDir "D:/2ps-workspace/blog-video-pipeline/public/pptx-slides"
+     powershell -ExecutionPolicy Bypass -File "$PIPELINE_DIR/scripts/pptx-to-images.ps1" -PptxPath "<pptx-path>" -OutDir "$PIPELINE_DIR/public/pptx-slides"
      ```
+     This also exports `slide-notes.json` with speaker notes per slide.
 
-   - **Neither available**, guide the user:
-     > To convert PowerPoint slides, you need either LibreOffice (free) or Microsoft Office.
+   - **Neither available:**
+     > To convert PowerPoint slides, you need LibreOffice (free) or Microsoft Office.
      > - LibreOffice: https://www.libreoffice.org/download/libreoffice/ → install → restart terminal
-     > - Or export manually from PowerPoint: File → Export → Change File Type → PNG, save into `public/pptx-slides/`
+     > - Or export manually from PowerPoint: File → Export → Change File Type → PNG → save into `$PIPELINE_DIR/public/pptx-slides/`
 
-2. List the exported files to confirm exact filenames and extension case:
+2. List exported files to confirm exact filenames and extension case:
    ```bash
-   ls D:/2ps-workspace/blog-video-pipeline/public/pptx-slides/
+   ls "$PIPELINE_DIR/public/pptx-slides/"
    ```
 
-3. Read each exported PNG with the Read tool (Claude can see slide content visually).
+3. **Check for speaker notes** (PowerShell COM only):
 
-4. Extract from each slide: title, body text, bullets, diagrams, tables, speaker notes.
+   If `$PIPELINE_DIR/public/pptx-slides/slide-notes.json` exists, read it and count slides with non-empty notes.
 
-5. **IMPORTANT — use image slides, not component slides.** The exported PNGs become the actual video frames. Generate `image`-type slides in video-script.json that reference each PNG. Do NOT redraw content using concept/diagram/code components.
+   - **Notes found on any slides** — ask the user:
+     > I found speaker notes on [X] of [N] slides. Would you like me to use them as the narration?
+     > - **Yes** — use existing notes; only generate narration for slides without notes
+     > - **No** — generate fresh narration for all slides from the visual content
 
-   `imagePath` must be **relative to `public/`** (Remotion's asset root). Example:
+   - **No notes found** — generate narration from visuals for all slides.
 
+   Store the choice as `USE_EXISTING_NOTES`.
+
+4. Read each exported PNG with the Read tool. Extract: title, body text, bullets, visible diagrams.
+
+5. **IMPORTANT — use `image`-type slides, not component slides.** The PNGs are the video frames. Do NOT redraw content using concept/diagram/code components.
+
+   Set `narration` per slide:
+   - `USE_EXISTING_NOTES=yes` and slide has notes → use note text verbatim
+   - Otherwise → write 2–4 conversational sentences from the visual content
+
+   `imagePath` is **relative to `public/`** (Remotion's static asset root):
    ```json
    {
      "id": "slide-01",
@@ -136,28 +166,24 @@ Then:
      "imagePath": "pptx-slides/Slide1.PNG"
    }
    ```
+   Use the **exact filename and extension case** from step 2.
+   LibreOffice: `<filename>-<N>.png` | PowerShell COM: `Slide1.PNG`, `Slide2.PNG`, ...
 
-   Use the **exact filename and extension case** from the `ls` output in step 2. LibreOffice names files `<original-filename>-<N>.png`; PowerShell COM names them `Slide1.PNG`, `Slide2.PNG`, etc.
-
-6. Proceed to Phase 2 with the extracted narration content.
+6. Proceed to Phase 2.
 
 ---
 
 ## Phase 2 — Preferences
 
-Ask both questions at once:
+Ask both at once:
 
 > Two quick questions:
->
-> 1. **Narration language** — what language should the narrator speak?
->    (e.g. Vietnamese, English, Japanese, Korean — default: Vietnamese)
->
-> 2. **Background theme** — light or dark? (default: light)
+> 1. **Narration language** — e.g. Vietnamese, English, Japanese (default: Vietnamese)
+> 2. **Background theme** — light or dark? (default: light; applies to component slides only)
 
 Voice: reuse `ELEVENLABS_VOICE_ID` from `.env` silently. Only prompt if absent (Phase 0 handles it).
 
-Write `D:\2ps-workspace\blog-video-pipeline\video.config.json`:
-
+Write `$PIPELINE_DIR/video.config.json`:
 ```json
 {
   "narration": {
@@ -172,31 +198,30 @@ Write `D:\2ps-workspace\blog-video-pipeline\video.config.json`:
   "audioDir": "public/audio"
 }
 ```
-
 Leave `voiceId` empty — `generate-audio.ts` falls back to `ELEVENLABS_VOICE_ID` from `.env`.
 
 ---
 
 ## Phase 3 — Script Generation
 
-Tell the user:
+Tell the user: `"Planning your video..."`
 
-> Planning your video...
-
-Generate `D:\2ps-workspace\blog-video-pipeline\content\video-script.json` using:
+Generate `$PIPELINE_DIR/content/video-script.json` using:
 - Schema: `references/video-script-schema.json`
 - Examples: `references/slide-examples.json`
 
-**Script rules:**
-- 15–30 slides total for a 5–15 min video
-- First slide: `title` type. Last slide: `outro` type.
-- Group into 3–8 named sections; use `section-header` slides to open each
+**Rules (text/URL/topic source):**
+- 15–30 slides for a 5–15 min video
+- First: `title`, last: `outro`
+- 3–8 sections; `section-header` opens each
 - Slide IDs: `slide-01`, `slide-02`, ... zero-padded
-- Every slide must have a non-empty `narration` field
-- Narration in the language chosen in Phase 2 — 2–4 conversational sentences per slide
-- Code blocks: ≤ 15 lines. Flow nodes: 3–5. Diagram: max 3 rows × 4 cols.
+- Every slide: non-empty `narration`, 2–4 sentences in the chosen language
+- Code: ≤15 lines | Flow: 3–5 nodes | Diagram: ≤3 rows × 4 cols
 
-**For PPTX source:** map original slides to 1–2 video slides each. Preserve structure; rewrite narration to be educational and conversational.
+**Rules (PPTX source):**
+- One `image` slide per original slide (split dense ones into 2 if needed)
+- Add `title` slide at start and `outro` at end
+- `imagePath` must match the exact exported filename
 
 ---
 
@@ -213,74 +238,62 @@ Title: "[video title]"
 Sections:
   1. [Section name]
      - slide-01: title — "[title text]"
-     - slide-02: concept — "[heading]" ([N] bullets)
-     - slide-03: code — "[heading]" ([language])
+     - slide-02: concept — "[heading]"
+     - slide-03: image — pptx-slides/Slide3.PNG
   2. [Section name]
-     - slide-04: section-header — "[heading]"
-     - slide-05: diagram — "[heading]"
      ...
 ```
 
-Then read and print `content/video-script.json` in full so the user can review every slide's narration and content inline.
-
-After printing:
+Then read and print `$PIPELINE_DIR/content/video-script.json` in full so the user can review every slide's narration and content inline.
 
 ```
 You can:
-- Say "looks good" to start generating the video
-- Ask me to change anything (sections, tone, narration, slide order)
+- Say "looks good" to generate the video
+- Ask me to change anything (sections, tone, narration, order)
 - Edit content/video-script.json directly and say "done" when ready
 ```
 
-**Loop:** apply any requested changes and re-show the preview until user confirms.
+**Loop:** apply changes and re-show preview until the user confirms.
 
 ---
 
 ## Phase 5 — Audio Generation
 
-Tell the user:
+Tell the user: `"Generating voice narration for [N] slides... (~30–90 seconds)"`
 
-> Generating voice narration for [N] slides... (~30–90 seconds)
-
-Run in **background** so you can poll for progress:
-
+Run in **background**:
 ```bash
-cd D:/2ps-workspace/blog-video-pipeline && rm -rf public/audio/*.mp3 public/audio/*.json && npx tsx scripts/generate-audio.ts > audio-gen.log 2>&1
+cd "$PIPELINE_DIR" && rm -rf public/audio/*.mp3 public/audio/*.json && npx tsx scripts/generate-audio.ts > audio-gen.log 2>&1
 ```
 
-While the process runs, poll `audio-gen.log` every 10–15 seconds and show the user which slide is being processed:
+Poll `$PIPELINE_DIR/audio-gen.log` every 10–15 seconds:
 ```bash
-# grep for progress lines like "Generating: slide-XX..." or "slide-XX: X.Xs"
-grep -E "Generating:|slide-[0-9]+" D:/2ps-workspace/blog-video-pipeline/audio-gen.log | tail -3
+grep -E "Generating:|slide-[0-9]+" "$PIPELINE_DIR/audio-gen.log" | tail -3
 ```
 
-When complete (detect `Done! Total duration:` in the log):
-- Show total audio duration from that line
-- On error lines (`Error` / `failed` / `4[0-9][0-9]`), explain in plain English:
-  - `401` → "Your ElevenLabs API key is invalid or expired. Check `.env`."
-  - `429` / `quota` → "You've hit your ElevenLabs monthly character limit."
-  - voice ID error → "The voice ID isn't recognized. Run `npx tsx scripts/list-voices.ts` to pick a valid one."
+On completion (detect `Done! Total duration:`), show the duration.
+On error lines (`Error` / `failed` / HTTP 4xx):
+- `401` → "ElevenLabs API key is invalid or expired. Check `.env`."
+- `429` / `quota` → "Monthly character limit reached."
+- voice ID error → "Voice ID not recognized. Run `npx tsx scripts/list-voices.ts`."
 
 ---
 
 ## Phase 6 — Video Render
 
-Tell the user:
+Tell the user: `"Rendering your video... (~1–3 minutes)"`
 
-> Rendering your video... (~1–3 minutes)
-
-Generate a URL-friendly slug from the video title (lowercase, hyphens). Run in **background**:
-
+Derive a URL-friendly slug from the video title. Run in **background**:
 ```bash
-cd D:/2ps-workspace/blog-video-pipeline && npx remotion render EducationalVideo output/<slug>.mp4 > render.log 2>&1
+cd "$PIPELINE_DIR" && npx remotion render EducationalVideo output/<slug>.mp4 > render.log 2>&1
 ```
 
-While rendering, poll `render.log` every 15 seconds and report frame progress to the user:
+Poll `$PIPELINE_DIR/render.log` every 15 seconds:
 ```bash
-grep -E "Frame|Rendering|error" D:/2ps-workspace/blog-video-pipeline/render.log | tail -3
+grep -E "Frame|Rendering|error" "$PIPELINE_DIR/render.log" | tail -3
 ```
 
-When complete (detect `Rendered` or `Done` in the log), confirm success. On error, grep for `Error` lines and show plain-English message.
+On completion (detect `Rendered` or `Done`), confirm success. On error, show relevant lines in plain English.
 
 ---
 
@@ -289,12 +302,25 @@ When complete (detect `Rendered` or `Done` in the log), confirm success. On erro
 ```
 Your video is ready!
 
-File:     D:\2ps-workspace\blog-video-pipeline\output\<slug>.mp4
+File:     $PIPELINE_DIR/output/<slug>.mp4
 Duration: ~[X] minutes
 Slides:   [N]
 ```
 
 List any slides skipped due to empty narration.
+
+**If the source was a PPTX file**, offer to write narration back as slide notes:
+
+> Would you like me to add the narration script to your PowerPoint file as speaker notes?
+> (Existing notes are preserved — narration is appended after them with a divider.)
+
+If yes:
+```bash
+powershell -ExecutionPolicy Bypass -File "$PIPELINE_DIR/scripts/pptx-add-notes.ps1" -PptxPath "<original-pptx-path>" -ScriptPath "$PIPELINE_DIR/content/video-script.json"
+```
+
+The script backs up the original as `<file>.pptx.bak` first. Tell the user:
+> Done! Narration added to [N] slides in [file.pptx]. Backup saved as [file.pptx.bak].
 
 ---
 
@@ -324,3 +350,4 @@ Diagram node colors: `"blue"`, `"green"`, `"orange"`, `"purple"`, `"red"`
 - [ ] Diagram nodes have valid `row`/`col` positions
 - [ ] Table rows match header column count
 - [ ] Flow nodes: 3–5 entries
+- [ ] Image slides: `imagePath` matches an actual file in `public/pptx-slides/`

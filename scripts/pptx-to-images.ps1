@@ -1,7 +1,9 @@
-# Exports each slide of a PowerPoint file as a PNG image using Microsoft Office COM.
+# Exports each slide of a PowerPoint file as a PNG image and extracts speaker notes.
 # Requires Microsoft Office (PowerPoint) to be installed.
-# Usage: powershell -ExecutionPolicy Bypass -File scripts\pptx-to-images.ps1 -PptxPath "path\to\file.pptx" -OutDir "temp\pptx-slides"
-# Output: one PNG per slide named Slide1.png, Slide2.png, ...
+# Usage: powershell -ExecutionPolicy Bypass -File scripts\pptx-to-images.ps1 -PptxPath "path\to\file.pptx" -OutDir "public\pptx-slides"
+# Output:
+#   Slide1.PNG, Slide2.PNG, ... — one image per slide
+#   slide-notes.json            — speaker notes per slide (empty string if none)
 
 param(
   [Parameter(Mandatory)][string]$PptxPath,
@@ -23,11 +25,33 @@ $ppt.Visible = [Microsoft.Office.Core.MsoTriState]::msoTrue
 
 try {
   $deck = $ppt.Presentations.Open($pptx, $false, $false, $false)
-  # ppSaveAsPNG = 18
+
+  # Export all slides as PNG images
   $deck.Export($out, "PNG")
-  $count = $deck.Slides.Count
+
+  # Extract speaker notes for each slide (placeholder type 2 = notes body)
+  $notes = @()
+  foreach ($slide in $deck.Slides) {
+    $noteText = ""
+    try {
+      $noteShape = $slide.NotesPage.Shapes | Where-Object {
+        $_.PlaceholderFormat -ne $null -and $_.PlaceholderFormat.Type -eq 2
+      } | Select-Object -First 1
+      if ($noteShape) {
+        $noteText = $noteShape.TextFrame.TextRange.Text.Trim()
+      }
+    } catch {}
+    $notes += [PSCustomObject]@{ slideIndex = $slide.SlideIndex; notes = $noteText }
+  }
+
+  $notesJson = $notes | ConvertTo-Json -Depth 3
+  $notesJson | Out-File -FilePath "$out\slide-notes.json" -Encoding utf8
+
+  $withNotes = ($notes | Where-Object { $_.notes -ne "" }).Count
+  Write-Host "Exported $($deck.Slides.Count) slides to $out"
+  Write-Host "Speaker notes found: $withNotes of $($deck.Slides.Count) slides"
+
   $deck.Close()
-  Write-Host "Exported $count slides to $out"
 } finally {
   $ppt.Quit()
 }
