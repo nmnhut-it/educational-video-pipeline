@@ -100,39 +100,46 @@ Then:
 
    - **LibreOffice found:**
      ```bash
-     mkdir -p D:/2ps-workspace/blog-video-pipeline/temp/pptx-slides
-     soffice --headless --convert-to png --outdir D:/2ps-workspace/blog-video-pipeline/temp/pptx-slides/ "<pptx-path>"
+     mkdir -p D:/2ps-workspace/blog-video-pipeline/public/pptx-slides
+     soffice --headless --convert-to png --outdir D:/2ps-workspace/blog-video-pipeline/public/pptx-slides/ "<pptx-path>"
      ```
 
    - **LibreOffice not found:** use PowerShell (requires Microsoft Office):
      ```bash
-     powershell -ExecutionPolicy Bypass -File "D:/2ps-workspace/blog-video-pipeline/scripts/pptx-to-images.ps1" -PptxPath "<pptx-path>" -OutDir "D:/2ps-workspace/blog-video-pipeline/temp/pptx-slides"
+     powershell -ExecutionPolicy Bypass -File "D:/2ps-workspace/blog-video-pipeline/scripts/pptx-to-images.ps1" -PptxPath "<pptx-path>" -OutDir "D:/2ps-workspace/blog-video-pipeline/public/pptx-slides"
      ```
 
    - **Neither available**, guide the user:
      > To convert PowerPoint slides, you need either LibreOffice (free) or Microsoft Office.
      > - LibreOffice: https://www.libreoffice.org/download/libreoffice/ → install → restart terminal
-     > - Or export manually from PowerPoint: File → Export → Change File Type → PNG
+     > - Or export manually from PowerPoint: File → Export → Change File Type → PNG, save into `public/pptx-slides/`
 
-2. Read each exported PNG with the Read tool (Claude can see slide content visually).
+2. List the exported files to confirm exact filenames and extension case:
+   ```bash
+   ls D:/2ps-workspace/blog-video-pipeline/public/pptx-slides/
+   ```
 
-3. Extract from each slide: title, body text, bullets, diagrams, tables, speaker notes.
+3. Read each exported PNG with the Read tool (Claude can see slide content visually).
 
-4. **IMPORTANT — use image slides, not component slides.** The exported PNGs become the actual video frames. Generate `image`-type slides in video-script.json that reference each PNG directly. Do NOT redraw the content using concept/diagram/code components. Example slide:
+4. Extract from each slide: title, body text, bullets, diagrams, tables, speaker notes.
 
-```json
-{
-  "id": "slide-01",
-  "type": "image",
-  "section": "Introduction",
-  "narration": "...",
-  "imagePath": "temp/pptx-slides/Slide1.png"
-}
-```
+5. **IMPORTANT — use image slides, not component slides.** The exported PNGs become the actual video frames. Generate `image`-type slides in video-script.json that reference each PNG. Do NOT redraw content using concept/diagram/code components.
 
-LibreOffice names files `<original-filename>-<N>.png`; PowerShell COM names them `Slide1.png`, `Slide2.png`, etc. Check the output directory first to confirm the naming pattern.
+   `imagePath` must be **relative to `public/`** (Remotion's asset root). Example:
 
-5. Proceed to Phase 2 with the extracted narration content.
+   ```json
+   {
+     "id": "slide-01",
+     "type": "image",
+     "section": "Introduction",
+     "narration": "...",
+     "imagePath": "pptx-slides/Slide1.PNG"
+   }
+   ```
+
+   Use the **exact filename and extension case** from the `ls` output in step 2. LibreOffice names files `<original-filename>-<N>.png`; PowerShell COM names them `Slide1.PNG`, `Slide2.PNG`, etc.
+
+6. Proceed to Phase 2 with the extracted narration content.
 
 ---
 
@@ -235,13 +242,21 @@ Tell the user:
 
 > Generating voice narration for [N] slides... (~30–90 seconds)
 
+Run in **background** so you can poll for progress:
+
 ```bash
 cd D:/2ps-workspace/blog-video-pipeline && rm -rf public/audio/*.mp3 public/audio/*.json && npx tsx scripts/generate-audio.ts > audio-gen.log 2>&1
 ```
 
-After completion, read `audio-gen.log`:
-- Find the `Done! Total duration:` line → show duration
-- On error, find `Error` / `failed` lines → explain in plain English:
+While the process runs, poll `audio-gen.log` every 10–15 seconds and show the user which slide is being processed:
+```bash
+# grep for progress lines like "Generating: slide-XX..." or "slide-XX: X.Xs"
+grep -E "Generating:|slide-[0-9]+" D:/2ps-workspace/blog-video-pipeline/audio-gen.log | tail -3
+```
+
+When complete (detect `Done! Total duration:` in the log):
+- Show total audio duration from that line
+- On error lines (`Error` / `failed` / `4[0-9][0-9]`), explain in plain English:
   - `401` → "Your ElevenLabs API key is invalid or expired. Check `.env`."
   - `429` / `quota` → "You've hit your ElevenLabs monthly character limit."
   - voice ID error → "The voice ID isn't recognized. Run `npx tsx scripts/list-voices.ts` to pick a valid one."
@@ -254,13 +269,18 @@ Tell the user:
 
 > Rendering your video... (~1–3 minutes)
 
-Generate a URL-friendly slug from the video title (lowercase, hyphens):
+Generate a URL-friendly slug from the video title (lowercase, hyphens). Run in **background**:
 
 ```bash
 cd D:/2ps-workspace/blog-video-pipeline && npx remotion render EducationalVideo output/<slug>.mp4 > render.log 2>&1
 ```
 
-Read `render.log` on completion. On error, show the relevant lines in plain English.
+While rendering, poll `render.log` every 15 seconds and report frame progress to the user:
+```bash
+grep -E "Frame|Rendering|error" D:/2ps-workspace/blog-video-pipeline/render.log | tail -3
+```
+
+When complete (detect `Rendered` or `Done` in the log), confirm success. On error, grep for `Error` lines and show plain-English message.
 
 ---
 

@@ -13,8 +13,9 @@ public/audio/manifest.json
 output/*.mp4
 output/*.webm
 
-# PPTX slide exports (temp)
+# PPTX slide exports (generated, not source)
 temp/
+public/pptx-slides/
 
 # Logs
 audio-gen.log

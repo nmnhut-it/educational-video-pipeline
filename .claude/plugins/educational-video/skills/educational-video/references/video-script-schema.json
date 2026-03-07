@@ -219,7 +219,7 @@
             "type": { "const": "image" },
             "imagePath": {
               "type": "string",
-              "description": "Path to PNG relative to project root, e.g. temp/pptx-slides/Slide1.png"
+              "description": "Path relative to public/ — e.g. pptx-slides/Slide1.PNG. Must match exact filename and extension case."
             }
           }
         }

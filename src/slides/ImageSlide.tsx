@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill } from "remotion";
+import { AbsoluteFill, staticFile } from "remotion";
 import { ProgressBar } from "../components/ProgressBar";
 import { ImageSlideData } from "../types";
 
@@ -12,7 +12,8 @@ interface ImageSlideProps {
 /**
  * Full-screen image slide for PPTX-sourced videos.
  * Displays the original slide PNG with a progress bar overlay.
- * Input: imagePath relative to project root (e.g. "temp/pptx-slides/slide-01.png")
+ * Input: imagePath relative to public/ (e.g. "pptx-slides/Slide1.PNG")
+ * Assets must live under public/ so Remotion's dev server and renderer can serve them.
  */
 export const ImageSlide: React.FC<ImageSlideProps> = ({
   data,
@@ -22,7 +23,7 @@ export const ImageSlide: React.FC<ImageSlideProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       <img
-        src={data.imagePath}
+        src={staticFile(data.imagePath)}
         style={{
           width: "100%",
           height: "100%",

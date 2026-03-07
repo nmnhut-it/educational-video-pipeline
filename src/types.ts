@@ -124,7 +124,7 @@ export interface OutroSlideData extends SlideBase {
 /** Full-screen image slide — displays a PNG/JPG file with a progress bar overlay */
 export interface ImageSlideData extends SlideBase {
   type: SlideType.IMAGE;
-  /** Path to the image file relative to the project root (e.g. "temp/pptx-slides/slide-01.png") */
+  /** Path relative to public/ — Remotion's staticFile() resolves it. E.g. "pptx-slides/Slide1.PNG" */
   imagePath: string;
 }
 
