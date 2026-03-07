@@ -1,0 +1,99 @@
+{
+  "title": {
+    "id": "slide-01",
+    "type": "title",
+    "section": "Introduction",
+    "narration": "Welcome to this tutorial on building REST APIs with Node.js.",
+    "title": "Building REST APIs",
+    "subtitle": "A Practical Guide with Node.js"
+  },
+  "section-header": {
+    "id": "slide-02",
+    "type": "section-header",
+    "section": "Stage 1 - Setup",
+    "narration": "Let's start with project setup and dependencies.",
+    "stageNumber": 1,
+    "heading": "Project Setup",
+    "tagline": "From zero to a running Express server"
+  },
+  "concept": {
+    "id": "slide-03",
+    "type": "concept",
+    "section": "Stage 1 - Setup",
+    "narration": "REST APIs follow a simple request-response pattern over HTTP.",
+    "heading": "What is a REST API?",
+    "bullets": [
+      "Stateless client-server communication",
+      "Standard HTTP methods: GET, POST, PUT, DELETE",
+      "JSON as the data exchange format"
+    ],
+    "highlight": "Each request contains all the information needed to process it"
+  },
+  "code": {
+    "id": "slide-04",
+    "type": "code",
+    "section": "Stage 1 - Setup",
+    "narration": "Here's the minimal Express server with a single route.",
+    "heading": "Minimal Express Server",
+    "language": "typescript",
+    "code": "import express from 'express';\n\nconst app = express();\napp.use(express.json());\n\napp.get('/api/health', (req, res) => {\n  res.json({ status: 'ok' });\n});\n\napp.listen(3000);",
+    "caption": "A working server in 10 lines"
+  },
+  "diagram": {
+    "id": "slide-05",
+    "type": "diagram",
+    "section": "Stage 2 - Architecture",
+    "narration": "The typical three-layer architecture separates concerns cleanly.",
+    "heading": "Three-Layer Architecture",
+    "nodes": [
+      { "id": "client", "label": "Client", "row": 0, "col": 1, "color": "blue" },
+      { "id": "router", "label": "Router", "sublabels": ["Express routes"], "row": 1, "col": 0, "color": "green" },
+      { "id": "service", "label": "Service", "sublabels": ["Business logic"], "row": 1, "col": 1, "color": "orange" },
+      { "id": "repo", "label": "Repository", "sublabels": ["Database access"], "row": 1, "col": 2, "color": "purple" },
+      { "id": "db", "label": "Database", "row": 2, "col": 1, "color": "red" }
+    ],
+    "edges": [
+      { "from": "client", "to": "router", "label": "HTTP" },
+      { "from": "router", "to": "service" },
+      { "from": "service", "to": "repo" },
+      { "from": "repo", "to": "db", "label": "SQL" }
+    ]
+  },
+  "flow": {
+    "id": "slide-06",
+    "type": "flow",
+    "section": "Stage 2 - Architecture",
+    "narration": "A request flows through middleware, then the handler, then back to the client.",
+    "heading": "Request Lifecycle",
+    "nodes": [
+      { "label": "Request", "description": "Client sends HTTP" },
+      { "label": "Middleware", "description": "Auth, logging, parsing", "active": true },
+      { "label": "Handler", "description": "Business logic" },
+      { "label": "Response", "description": "JSON back to client" }
+    ],
+    "summary": "Each middleware can short-circuit the chain"
+  },
+  "table": {
+    "id": "slide-07",
+    "type": "table",
+    "section": "Stage 3 - Methods",
+    "narration": "Here's a comparison of the four main HTTP methods and their purposes.",
+    "heading": "HTTP Methods Comparison",
+    "headers": ["Method", "Purpose", "Idempotent", "Body"],
+    "rows": [
+      ["GET", "Read resource", "Yes", "No"],
+      ["POST", "Create resource", "No", "Yes"],
+      ["PUT", "Replace resource", "Yes", "Yes"],
+      ["DELETE", "Remove resource", "Yes", "No"]
+    ]
+  },
+  "outro": {
+    "id": "slide-08",
+    "type": "outro",
+    "section": "Closing",
+    "narration": "That wraps up our guide to building REST APIs with Node.js.",
+    "title": "You're Ready to Build",
+    "message": "Start with a simple CRUD API and iterate from there",
+    "evolutionLine": "Setup → Architecture → Methods → Middleware → Production"
+  }
+}

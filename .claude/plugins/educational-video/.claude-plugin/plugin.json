@@ -1,0 +1,27 @@
+{
+  "name": "educational-video",
+  "version": "1.1.0",
+  "description": "Create narrated educational videos from any source content using Remotion + ElevenLabs",
+  "triggers": [
+    "create a video",
+    "make me a video",
+    "make educational video",
+    "I want to make a video",
+    "convert to narrated video",
+    "turn this into a video",
+    "video from this blog",
+    "video from this article",
+    "video from this tutorial",
+    "make a video about",
+    "create a video about",
+    "convert my slides to video",
+    "make a video from my PowerPoint",
+    "video from my pptx"
+  ],
+  "skills": [
+    {
+      "name": "educational-video",
+      "path": "../skills/educational-video/SKILL.md"
+    }
+  ]
+}

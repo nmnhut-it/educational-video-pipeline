@@ -1,0 +1,26 @@
+{
+  "name": "blog-video-pipeline",
+  "version": "1.0.0",
+  "description": "Blog-to-video pipeline: LLM Tools Evolution with Remotion + ElevenLabs",
+  "scripts": {
+    "dev": "remotion studio",
+    "build": "remotion render EducationalVideo output/blog-video.mp4",
+    "generate-audio": "npx tsx scripts/generate-audio.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.242",
+    "remotion": "4.0.242",
+    "@remotion/player": "4.0.242",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-syntax-highlighter": "^15.6.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "typescript": "^5.7.2",
+    "tsx": "^4.19.2",
+    "dotenv": "^16.4.7",
+    "@types/node": "^22.10.2"
+  }
+}

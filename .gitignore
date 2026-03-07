@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment — contains API keys, never commit
+.env
+
+# Generated audio files
+public/audio/*.mp3
+public/audio/*-timing.json
+public/audio/manifest.json
+
+# Rendered video output
+output/*.mp4
+output/*.webm
+
+# PPTX slide exports (temp)
+temp/
+
+# Logs
+audio-gen.log
+render.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

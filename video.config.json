@@ -1,0 +1,16 @@
+{
+  "narration": {
+    "language": "vi",
+    "voiceId": "",
+    "modelId": "eleven_v3",
+    "voiceSettings": {
+      "stability": 0.6,
+      "similarityBoost": 0.8,
+      "style": 0.2
+    }
+  },
+  "theme": "light",
+  "scriptPath": "content/video-script.json",
+  "outputPath": "output",
+  "audioDir": "public/audio"
+}

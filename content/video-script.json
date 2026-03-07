@@ -1,0 +1,448 @@
+{
+  "title": "From Raw Text to Agent Teams: How LLM Tooling Evolved",
+  "slides": [
+    {
+      "id": "slide-01",
+      "type": "title",
+      "section": "Hook / Title",
+      "narration": "LLM chỉ là máy dự đoán từ tiếp theo, vậy làm sao chúng có thể gọi API, đọc file, hay thậm chí điều khiển trình duyệt? Hôm nay mình sẽ kể cho các bạn câu chuyện tiến hóa của LLM tooling, từ những hàm hardcode đơn giản cho đến cả đội agent phối hợp với nhau.",
+      "title": "From Raw Text to Agent Teams",
+      "subtitle": "How LLM Tooling Evolved"
+    },
+    {
+      "id": "slide-02",
+      "type": "concept",
+      "section": "LLMs Don't Call Tools",
+      "narration": "Đây là sự thật khiến nhiều người bất ngờ: LLM không thể chạy code, không thể gọi API, không thể đọc file. Tất cả những gì nó làm là dự đoán token tiếp theo, tức là xuất ra text thô, từng phần một. Vậy thì tool calling hoạt động thế nào?",
+      "heading": "LLMs Don't Actually \"Call\" Tools",
+      "bullets": [
+        "LLMs cannot run code or call APIs",
+        "They only predict the next token — outputting raw text",
+        "Tool calling is an illusion from the user's perspective"
+      ],
+      "highlight": "All they do is predict the next token"
+    },
+    {
+      "id": "slide-03",
+      "type": "code",
+      "section": "LLMs Don't Call Tools",
+      "narration": "Mẹo rất đơn giản. Trong quá trình training, model học cách xuất text theo một format đặc biệt khi muốn dùng tool. Ví dụ thay vì đoán câu trả lời, model sẽ xuất ra một đoạn XML chứa tên tool và tham số như thế này.",
+      "heading": "The Special Format Models Output",
+      "language": "xml",
+      "code": "<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\"}}\n</tool_call>",
+      "caption": "The model only writes text — it does not actually run the function"
+    },
+    {
+      "id": "slide-04",
+      "type": "flow",
+      "section": "LLMs Don't Call Tools",
+      "narration": "Model không chạy đoạn code đó. Nó chỉ viết ra thôi. Một parser, thường nằm ở AI Server, tức phần mềm bình thường nằm giữa model và thế giới bên ngoài, sẽ theo dõi output. Khi phát hiện format đặc biệt, nó dừng model, trích xuất tên tool, chạy function thật, rồi đưa kết quả ngược lại cho model tiếp tục. Đây là nền tảng. Mọi thứ phía sau đều xoay quanh việc cải thiện vòng lặp này.",
+      "heading": "The Tool Calling Loop",
+      "nodes": [
+        { "label": "LLM", "description": "Outputs raw text" },
+        {
+          "label": "Parser",
+          "description": "Detects special format",
+          "active": true
+        },
+        { "label": "Function", "description": "Runs the actual tool" },
+        { "label": "Result", "description": "Returns to LLM" }
+      ],
+      "summary": "AI writes a structured wish -> system executes it -> result comes back"
+    },
+    {
+      "id": "slide-05",
+      "type": "section-header",
+      "section": "Stage 1: Hardcoded Functions",
+      "narration": "Giai đoạn đầu tiên: hàm được hardcode trực tiếp trên server. Những hệ thống tool-use đầu tiên cực kỳ đơn giản.",
+      "stageNumber": 1,
+      "heading": "Functions Hardcoded on the Server",
+      "tagline": "Write function, describe in prompt, parse output"
+    },
+    {
+      "id": "slide-06",
+      "type": "concept",
+      "section": "Stage 1: Hardcoded Functions",
+      "narration": "Bạn viết một hàm Python, mô tả nó trong system prompt, rồi build parser để bắt output của model và route đến function. Cách này hoạt động, nhưng có nhiều vấn đề. Mọi tool đều nằm trong codebase của bạn. Muốn thêm tool mới phải redeploy. System prompt phình to theo số lượng tool. Và không có khả năng chia sẻ. OpenAI formalize cách này thành Function Calling vào tháng 6 năm 2023.",
+      "heading": "Simple But Limited",
+      "bullets": [
+        "Write Python function -> describe in system prompt -> build parser",
+        "Every tool lives in your codebase — adding a tool = redeploy",
+        "System prompt grows with every tool added",
+        "No sharing — every developer must write their own",
+        "OpenAI formalized as Function Calling (06/2023)"
+      ]
+    },
+    {
+      "id": "slide-07",
+      "type": "section-header",
+      "section": "Stage 2: Tool Servers",
+      "narration": "Bước tiếp theo rất tự nhiên: tại sao phải giữ tool trong app? Nếu tool chỉ là function có input và output, nó có thể sống ở bất cứ đâu.",
+      "stageNumber": 2,
+      "heading": "Tool Servers — Moving Tools Out",
+      "tagline": "Separate tools into standalone services, call via HTTP"
+    },
+    {
+      "id": "slide-08",
+      "type": "concept",
+      "section": "Stage 2: Tool Servers",
+      "narration": "Tool servers là các service độc lập expose tool qua API. App AI không cần chứa code tool nữa, chỉ cần biết URL, schema và cách gọi. Lợi ích rõ ràng: tách biệt concern, tái sử dụng được, scale độc lập. Nhưng vấn đề lớn nhất là không có chuẩn chung. Mỗi tool server có format API riêng, auth riêng. Kết nối ba tool server khác nhau nghĩa là viết ba integration khác nhau.",
+      "heading": "Separated But No Standard",
+      "bullets": [
+        "Tools live as standalone services, exposed via API",
+        "Separation of concerns: AI app handles conversation, tool server handles action",
+        "One tool server can serve many AI apps",
+        "Independent scaling — heavy tools run on powerful hardware",
+        "Downside: no common standard — every server has its own format"
+      ]
+    },
+    {
+      "id": "slide-09",
+      "type": "section-header",
+      "section": "Stage 3: MCP",
+      "narration": "Cuối năm 2024, Anthropic phát hành Model Context Protocol. Ý tưởng là tạo ra một chuẩn mở duy nhất để kết nối AI model với tools, data sources và hệ thống bên ngoài.",
+      "stageNumber": 3,
+      "heading": "MCP — A Universal Plug for Tools",
+      "tagline": "One protocol, any tool, any model — USB for AI"
+    },
+    {
+      "id": "slide-10",
+      "type": "concept",
+      "section": "Stage 3: MCP",
+      "narration": "Hãy nghĩ MCP như USB cho AI. Trước USB, mỗi thiết bị có dây cáp riêng. MCP làm điều tương tự cho tools. Một MCP server expose tools để model gọi, resources để model đọc, và prompts là các template tái sử dụng. Bất kỳ AI app nào nói được MCP đều kết nối được với bất kỳ MCP server nào. Hệ sinh thái bùng nổ nhanh chóng: GitHub, Postgres, Slack, Google Drive.",
+      "heading": "USB for AI",
+      "bullets": [
+        "Single open standard: one protocol, any tool, any model",
+        "MCP server exposes: Tools (functions), Resources (data), Prompts (templates)",
+        "Any MCP-compatible app can connect",
+        "Ecosystem exploded: GitHub, Postgres, Slack, Google Drive"
+      ],
+      "highlight": "Think of it like USB for AI"
+    },
+    {
+      "id": "slide-11",
+      "type": "diagram",
+      "section": "Stage 3: MCP",
+      "narration": "Đây là kiến trúc MCP. AI app ở giữa kết nối với nhiều MCP server khác nhau qua một protocol duy nhất. Mỗi server expose tools, resources và prompts riêng. Không cần custom integration cho từng server nữa.",
+      "heading": "MCP Architecture",
+      "nodes": [
+        {
+          "id": "app",
+          "label": "AI App (Client)",
+          "sublabels": ["Speaks MCP protocol"],
+          "row": 0,
+          "col": 1,
+          "color": "blue"
+        },
+        {
+          "id": "slack",
+          "label": "MCP Server",
+          "sublabels": ["Slack", "Tools + Resources"],
+          "row": 1,
+          "col": 0,
+          "color": "green"
+        },
+        {
+          "id": "db",
+          "label": "MCP Server",
+          "sublabels": ["Database", "Tools + Resources"],
+          "row": 1,
+          "col": 1,
+          "color": "orange"
+        },
+        {
+          "id": "github",
+          "label": "MCP Server",
+          "sublabels": ["GitHub", "Tools + Resources"],
+          "row": 1,
+          "col": 2,
+          "color": "purple"
+        }
+      ],
+      "edges": [
+        { "from": "app", "to": "slack", "label": "MCP" },
+        { "from": "app", "to": "db", "label": "MCP" },
+        { "from": "app", "to": "github", "label": "MCP" }
+      ]
+    },
+    {
+      "id": "slide-12",
+      "type": "section-header",
+      "section": "Stage 4: Context Window Problem",
+      "narration": "MCP giúp thêm tool dễ dàng. Quá dễ dàng. Và đó chính là vấn đề.",
+      "stageNumber": 4,
+      "heading": "Context Window Problem",
+      "tagline": "More tools, less room to think"
+    },
+    {
+      "id": "slide-13",
+      "type": "concept",
+      "section": "Stage 4: Context Window Problem",
+      "narration": "Khi bạn kết nối năm MCP server, context window của model bị lấp đầy bởi tool descriptions, hướng dẫn sử dụng và metadata, kể cả khi hầu hết không liên quan đến task hiện tại. Tưởng tượng developer nhờ AI fix bug trong file Python, nhưng context đã chứa instructions cho Slack, database, Jira, browser. Tám mươi phần trăm context window bị lãng phí. Đây là lời nguyền scale của MCP: agent càng mạnh, càng ít chỗ để suy nghĩ.",
+      "heading": "The Scaling Curse of MCP",
+      "bullets": [
+        "5 MCP servers = context window flooded with tool descriptions",
+        "80% of context occupied by tools irrelevant to the current task",
+        "Context window = the model's working memory",
+        "Every token for tool descriptions = a token lost for understanding the problem"
+      ],
+      "highlight": "More capability, less room to think"
+    },
+    {
+      "id": "slide-14",
+      "type": "section-header",
+      "section": "Stage 5: Skills",
+      "narration": "Giải pháp là gì? Đừng load hết mọi thứ lên trước. Chỉ load cái cần, khi cần.",
+      "stageNumber": 5,
+      "heading": "Skills — Tools On Demand",
+      "tagline": "Lazy-load capabilities into context when needed"
+    },
+    {
+      "id": "slide-15",
+      "type": "concept",
+      "section": "Stage 5: Skills",
+      "narration": "Skill là một bundle gồm instructions, tools và context, chỉ được inject vào context khi được trigger. Thay vì nhồi hết mô tả Jira vào context, bạn đăng ký một skill với tên, trigger condition và payload. Khi model gặp request liên quan Jira, skill kích hoạt và payload vào context. Xong task thì payload rời đi. Context luôn sạch sẽ.",
+      "heading": "Lazy-Load Capability",
+      "bullets": [
+        "Skill = bundle of instructions + tools + context",
+        "Only injected into context when triggered",
+        "Trigger based on user request content",
+        "Task done -> payload leaves context -> context stays clean",
+        "Shift from \"know everything\" to \"know how to find what you need\""
+      ]
+    },
+    {
+      "id": "slide-16",
+      "type": "table",
+      "section": "Stage 5: Skills",
+      "narration": "Hãy so sánh hai cách tiếp cận. Với Raw MCP, mọi tool luôn được load. Mười tool thì nặng, một trăm tool thì không thể hoạt động. Với Skills, chỉ tool đang active mới được load. Mười hay một trăm tool đều nhẹ nhàng như nhau.",
+      "heading": "Raw MCP vs Skills",
+      "headers": ["Approach", "Context Cost", "10 Tools", "100 Tools"],
+      "rows": [
+        ["Raw MCP", "All tools always loaded", "Heavy", "Unworkable"],
+        ["Skills", "Only active tools loaded", "Light", "Still light"]
+      ]
+    },
+    {
+      "id": "slide-17",
+      "type": "section-header",
+      "section": "Stage 6: Agent = Memory + Skills",
+      "narration": "Với skills đã sẵn sàng, giờ ta có thể định nghĩa một AI agent hiện đại thực sự là gì.",
+      "stageNumber": 6,
+      "heading": "One Agent = Memory + Skills",
+      "tagline": "Model + Memory + Skills = Agent"
+    },
+    {
+      "id": "slide-18",
+      "type": "concept",
+      "section": "Stage 6: Agent = Memory + Skills",
+      "narration": "Agent bằng model cộng memory cộng skills. Model là bộ não LLM. Memory là kiến thức bền vững sống qua các cuộc hội thoại: sở thích user, context dự án, quyết định trước đó. Skills là khả năng on-demand kích hoạt khi cần. Memory khiến agent trở thành của bạn. Skills khiến agent trở nên có năng lực. Kiến trúc sạch, scalable. Nhưng một agent vẫn có giới hạn.",
+      "heading": "Modern Agent Definition",
+      "bullets": [
+        "Model: LLM brain — reasons and generates text",
+        "Memory: persistent knowledge across conversations",
+        "Skills: on-demand capabilities activated when needed"
+      ],
+      "highlight": "Agent = Model + Memory + Skills",
+      "flow": [
+        { "label": "Model", "description": "LLM Brain" },
+        { "label": "Memory", "description": "Persistent", "active": true },
+        { "label": "Skills", "description": "On-demand", "active": true }
+      ]
+    },
+    {
+      "id": "slide-19",
+      "type": "section-header",
+      "section": "Stage 7: Teams of Agents",
+      "narration": "Một số task quá lớn cho một agent. Không phải vì model không đủ thông minh, mà vì context window có hạn, làm tuần tự thì chậm, và các task khác nhau cần focus khác nhau.",
+      "stageNumber": 7,
+      "heading": "Teams of Agents",
+      "tagline": "Multiple agents, each with their own context, memory and skills"
+    },
+    {
+      "id": "slide-20",
+      "type": "table",
+      "section": "Stage 7: Teams of Agents",
+      "narration": "Một team điển hình gồm Lead điều phối công việc, Researcher khám phá codebase và đọc docs, Coder viết và sửa code, Tester chạy test và báo cáo kết quả. Mỗi agent chạy như process độc lập, không chia sẻ context window, mỗi agent bắt đầu sạch và tập trung vào task được giao. Nhưng điều này tạo ra vấn đề mới: họ nói chuyện với nhau thế nào?",
+      "heading": "Structure of an Agent Team",
+      "headers": ["Agent", "Role", "Skills"],
+      "rows": [
+        [
+          "Lead",
+          "Coordinates work, synthesizes results",
+          "Task management, messaging"
+        ],
+        ["Researcher", "Explores codebase, reads docs", "Search, web browsing"],
+        ["Coder", "Writes and edits code", "File editing, code generation"],
+        [
+          "Tester",
+          "Runs tests, reports results",
+          "Test execution, log analysis"
+        ]
+      ]
+    },
+    {
+      "id": "slide-21",
+      "type": "section-header",
+      "section": "Stage 8: Communication",
+      "narration": "Khi có nhiều agent, ta cần trả lời những câu hỏi khó. Agent A bảo Agent B làm gì thế nào? Agent B báo kết quả lại ra sao? Làm sao tránh xung đột? Hãy xem các cách tiếp cận hiện có.",
+      "stageNumber": 8,
+      "heading": "The Communication Problem",
+      "tagline": "Multiple agents -> need coordination protocols"
+    },
+    {
+      "id": "slide-22",
+      "type": "code",
+      "section": "Stage 8: Communication",
+      "narration": "Cách đầu tiên: Shared Conversation Thread, được AutoGen sử dụng. Mọi agent chia sẻ một message thread. Ai cũng thấy ai nói gì. Đơn giản, dễ debug, nhưng context phình rất nhanh. Năm agent với một trăm message thì mỗi agent đều mang toàn bộ cuộc hội thoại, kể cả phần không liên quan.",
+      "heading": "Approach 1: Shared Conversation Thread (AutoGen)",
+      "language": "text",
+      "code": "Agent A: \"I found the bug in auth.py line 42.\"\nAgent B: \"I'll write a fix.\"\nAgent C: \"I'll write a test for the fix.\"",
+      "caption": "Simple, full visibility — but context grows very fast"
+    },
+    {
+      "id": "slide-23",
+      "type": "code",
+      "section": "Stage 8: Communication",
+      "narration": "Cách hai: LLM-Driven Delegation, được CrewAI sử dụng. Agent không chia sẻ thread. Khi Agent A cần giúp đỡ, nó dùng delegation tool để gửi task cho đồng đội cụ thể. Tự nhiên, nhưng khó đoán. LLM tự quyết định khi nào delegate, nên không đảm bảo nó sẽ delegate. Và không có lifecycle tracking cho delegated task.",
+      "heading": "Approach 2: LLM-Driven Delegation (CrewAI)",
+      "language": "python",
+      "code": "delegate_work(\n  task=\"fix the bug\",\n  coworker=\"Coder\",\n  context=\"bug is in auth.py line 42\"\n)",
+      "caption": "Natural but unpredictable — LLM decides when to delegate"
+    },
+    {
+      "id": "slide-24",
+      "type": "code",
+      "section": "Stage 8: Communication",
+      "narration": "Cách ba: State Graph, được LangGraph sử dụng. Developer định nghĩa một đồ thị, mỗi node là agent, mỗi cạnh là transition cho phép. State chảy qua graph dưới dạng typed data. Xác định, kiểm toán được. Nhưng cứng nhắc. Phải thiết kế graph trước, agent không tự tổ chức hay thay đổi workflow lúc runtime.",
+      "heading": "Approach 3: State Graph (LangGraph)",
+      "language": "text",
+      "code": "Researcher → Planner → Coder → Tester\n                                  ↓\n                          (tests fail?)\n                                  ↓\n                          back to Planner",
+      "caption": "Deterministic, auditable — but requires designing the graph upfront"
+    },
+    {
+      "id": "slide-25",
+      "type": "code",
+      "section": "Stage 8: Communication",
+      "narration": "Cách bốn: Task List cộng Direct Messages, được Claude Code Agent Teams sử dụng. Team có shared task list lưu trên disk. Agent claim task, làm việc, đánh dấu done. Giao tiếp trực tiếp qua message tool. Tasks hỗ trợ dependencies. Cấu trúc rõ ràng, linh hoạt, agent làm việc độc lập không chia sẻ context.",
+      "heading": "Approach 4: Task List + Direct Messages (Claude Code)",
+      "language": "text",
+      "code": "Lead creates task: \"Fix auth bug\" → status: pending\nCoder claims task           → status: in_progress\nCoder finishes              → status: completed\n  → sends message to Lead: \"Fixed. See commit abc123.\"\nLead checks task list, assigns next work.",
+      "caption": "Structured + flexible — tasks track lifecycle"
+    },
+    {
+      "id": "slide-26",
+      "type": "concept",
+      "section": "Stage 8: Communication",
+      "narration": "Và cuối cùng, cách năm: A2A, Agent-to-Agent protocol của Google, được Linux Foundation quản lý từ tháng 6 năm 2025. Đây là chuẩn mở cho agents tìm thấy nhau, xác thực, và trao đổi công việc xuyên tổ chức. MCP kết nối agent với tools theo chiều dọc. A2A kết nối agent với agent theo chiều ngang. Hai giao thức bổ sung cho nhau, có thể hội tụ trong tương lai.",
+      "heading": "Approach 5: A2A — Open Protocol (Google)",
+      "bullets": [
+        "Agent Cards: each agent publishes a JSON describing capabilities at /.well-known/agent.json",
+        "Tasks: submitted -> working -> completed / failed",
+        "Messages & Parts: text, images, audio — multimodal",
+        "Streaming via Server-Sent Events for long-running tasks",
+        "MCP = agent <-> tools (vertical) | A2A = agent <-> agent (horizontal)"
+      ],
+      "highlight": "MCP complements A2A — tools vs agents"
+    },
+    {
+      "id": "slide-27",
+      "type": "diagram",
+      "section": "The Full Picture",
+      "narration": "Hãy zoom ra và nhìn toàn cảnh. Trên cùng là Agent Team với nhiều agent, mỗi agent có memory và skills riêng, giao tiếp qua messages, tasks hoặc A2A. Bên dưới, skills kích hoạt on-demand, kết nối xuống các MCP server cụ thể. Tiến hóa gói gọn trong một dòng: Hardcoded functions, rồi tool servers, rồi MCP chuẩn hóa, rồi skills lazy-load, rồi agents với memory, rồi teams nhiều agent, rồi communication protocols.",
+      "heading": "The Full Architecture",
+      "nodes": [
+        {
+          "id": "lead",
+          "label": "Agent A (Lead)",
+          "sublabels": ["Memory", "Skills"],
+          "row": 0,
+          "col": 0,
+          "color": "blue"
+        },
+        {
+          "id": "coder",
+          "label": "Agent B (Coder)",
+          "sublabels": ["Memory", "Skills"],
+          "row": 0,
+          "col": 1,
+          "color": "green"
+        },
+        {
+          "id": "tester",
+          "label": "Agent C (Tester)",
+          "sublabels": ["Memory", "Skills"],
+          "row": 0,
+          "col": 2,
+          "color": "orange"
+        },
+        {
+          "id": "comm",
+          "label": "Communication",
+          "sublabels": ["Messages / Tasks / A2A"],
+          "row": 1,
+          "col": 1,
+          "color": "purple"
+        },
+        {
+          "id": "mcp-slack",
+          "label": "MCP Server",
+          "sublabels": ["Slack"],
+          "row": 2,
+          "col": 0,
+          "color": "green"
+        },
+        {
+          "id": "mcp-db",
+          "label": "MCP Server",
+          "sublabels": ["Database"],
+          "row": 2,
+          "col": 1,
+          "color": "orange"
+        },
+        {
+          "id": "mcp-git",
+          "label": "MCP Server",
+          "sublabels": ["Git"],
+          "row": 2,
+          "col": 2,
+          "color": "purple"
+        }
+      ],
+      "edges": [
+        { "from": "lead", "to": "comm" },
+        { "from": "coder", "to": "comm" },
+        { "from": "tester", "to": "comm" },
+        { "from": "comm", "to": "mcp-slack", "label": "Skills activate" },
+        { "from": "comm", "to": "mcp-db", "label": "on demand" },
+        { "from": "comm", "to": "mcp-git" }
+      ]
+    },
+    {
+      "id": "slide-28",
+      "type": "flow",
+      "section": "The Full Picture",
+      "narration": "Nhìn lại toàn bộ hành trình tiến hóa. Từ hàm hardcode, rồi tool server, rồi MCP chuẩn hóa, rồi skills lazy-load, rồi agent với memory, rồi team nhiều agent, và cuối cùng là giao thức giao tiếp. Mỗi tầng giải quyết vấn đề của tầng trước và tạo ra thách thức mới.",
+      "heading": "The Evolution Journey",
+      "nodes": [
+        { "label": "Hardcoded", "description": "Stage 1" },
+        { "label": "Tool Server", "description": "Stage 2" },
+        { "label": "MCP", "description": "Stage 3" },
+        { "label": "Skills", "description": "Stage 4-5" },
+        { "label": "Agent", "description": "Stage 6" },
+        { "label": "Teams", "description": "Stage 7" },
+        { "label": "Protocols", "description": "Stage 8", "active": true }
+      ],
+      "summary": "Each layer solved the previous layer's problem, and created a new one"
+    },
+    {
+      "id": "slide-29",
+      "type": "outro",
+      "section": "Outro",
+      "narration": "LLM vẫn chỉ đang dự đoán token tiếp theo. Mọi thứ khác, tools, skills, memory, teams, protocols, đều là giàn giáo mà chúng ta xây xung quanh một trick đơn giản đó. Mỗi tầng giải quyết vấn đề của tầng trước, và tạo ra vấn đề mới. Đó là cách chúng ta đến được đây. Cảm ơn các bạn đã theo dõi.",
+      "title": "The LLM Is Still Just Predicting the Next Token",
+      "message": "Everything else — tools, skills, memory, teams, protocols — is scaffolding we built around that one simple trick.",
+      "evolutionLine": "Hardcoded functions -> Tool servers -> MCP -> Skills -> Agents -> Teams -> Communication protocols"
+    }
+  ]
+}
