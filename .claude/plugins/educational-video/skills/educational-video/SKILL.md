@@ -66,28 +66,31 @@ cd "$PIPELINE_DIR" && npm install
 ```
 Tell the user: `"Installing dependencies... (one-time, ~1 minute)"`
 
-**Check 3: Voice engine API key**
+**Check 3: Voice engine**
 
-The voice engine is `narration.provider` in `$PIPELINE_DIR/video.config.json` (default and currently only engine: `elevenlabs`; engines live in `scripts/tts/`). The checks below are for ElevenLabs.
+The voice engine is `narration.provider` in `$PIPELINE_DIR/video.config.json`. See **Voice Engines** at the end of this file for what each one needs.
 
-Read `$PIPELINE_DIR/.env`. Check for `ELEVENLABS_API_KEY` with a real value (not empty/placeholder).
+- **No engine set up yet** (provider is `elevenlabs` but `.env` has no real `ELEVENLABS_API_KEY`): ask
+  > Which voice should narrate?
+  > 1. **ElevenLabs** — best quality, cloud, needs an account (free tier: 10,000 characters/month, ~2–3 videos)
+  > 2. **Piper** — free, runs offline on this computer, sounds more robotic
+  > 3. **A local voice server** — e.g. VieNeu-TTS for natural Vietnamese; free, but the server must be running
+  Then follow that engine's setup steps and set `narration.provider` (and its section) in `video.config.json`.
+- **`elevenlabs`**: `.env` must have `ELEVENLABS_API_KEY` with a real value (not empty/placeholder). If missing:
+  > 1. Go to https://elevenlabs.io → create a free account
+  > 2. Click your avatar → Profile → API Keys → Create API Key
+  > 3. Add this line to `$PIPELINE_DIR/.env`: `ELEVENLABS_API_KEY=your_key_here`
+- **`piper`**: run the voice check below; it fails with an install or download hint if Piper or the voice is missing.
+- **`openai-compatible`**: run the voice check below; it fails with "No TTS server at ..." if the server is not running.
 
-If missing:
-> You need an ElevenLabs API key for voice narration:
-> 1. Go to https://elevenlabs.io → create a free account
-> 2. Click your avatar → Profile → API Keys → Create API Key
-> 3. Add this line to `$PIPELINE_DIR/.env`:
->    `ELEVENLABS_API_KEY=your_key_here`
->
-> Free tier: 10,000 characters/month (~2–3 videos)
+**Check 4: Voice**
 
-**Check 4: Voice ID**
-
-Read `$PIPELINE_DIR/.env` for `ELEVENLABS_VOICE_ID`. If missing or empty:
 ```bash
 cd "$PIPELINE_DIR" && npx tsx scripts/list-voices.ts
 ```
-Show the list and ask the user to pick one. Write the chosen ID to `.env` as `ELEVENLABS_VOICE_ID=<id>`.
+- ElevenLabs: if `.env` has no `ELEVENLABS_VOICE_ID`, show the list, ask the user to pick, and write `ELEVENLABS_VOICE_ID=<id>` to `.env`.
+- Piper / local server: if `narration.voiceId` is empty, show the list, ask the user to pick, and write it to `narration.voiceId`.
+- If the command prints a setup hint (install, download, start the server), relay it in plain words and stop until it is fixed.
 
 **If all checks pass, skip Step 0b output entirely — don't mention it.**
 
@@ -187,26 +190,19 @@ Ask both at once:
 > 1. **Narration language** — e.g. Vietnamese, English, Japanese (default: Vietnamese)
 > 2. **Background theme** — light or dark? (default: light; applies to component slides only)
 
-Voice: reuse `ELEVENLABS_VOICE_ID` from `.env` silently. Only prompt if absent (Phase 0 handles it).
+Voice: reuse the engine and voice already set up (Phase 0 handles a missing one) silently.
 
-Write `$PIPELINE_DIR/video.config.json`:
+Update `$PIPELINE_DIR/video.config.json` — **edit only these two fields, keep everything else** (the voice engine and its settings live in the same file):
+- `narration.language` → the chosen language code (e.g. `vi`, `en`)
+- `theme` → `light` or `dark`
+
+If the file does not exist, create it with just those fields; the pipeline fills in defaults:
 ```json
 {
-  "narration": {
-    "provider": "elevenlabs",
-    "language": "<chosen-language-code>",
-    "voiceId": "",
-    "modelId": "eleven_v3",
-    "voiceSettings": { "stability": 0.6, "similarityBoost": 0.8, "style": 0.2 }
-  },
-  "theme": "<light-or-dark>",
-  "scriptPath": "content/video-script.json",
-  "outputPath": "output",
-  "audioDir": "public/audio"
+  "narration": { "language": "<chosen-language-code>" },
+  "theme": "<light-or-dark>"
 }
 ```
-Leave `voiceId` empty — the ElevenLabs engine falls back to `ELEVENLABS_VOICE_ID` from `.env`.
-Keep any `provider` value already in the file; only change it if the user asks for another voice engine.
 
 ---
 
@@ -274,7 +270,7 @@ Fix every `ERROR` line (they break the render: missing image, ragged table, edge
 
 ## Phase 5 — Audio Generation
 
-Tell the user: `"Generating voice narration for [N] slides... (~30–90 seconds)"`
+Tell the user: `"Generating voice narration for [N] slides... (~1–3 minutes)"`
 
 Run in **background**:
 ```bash
@@ -293,6 +289,7 @@ On error lines (`Error` / `failed` / HTTP 4xx):
 - `401` → "ElevenLabs API key is invalid or expired. Check `.env`."
 - `429` / `quota` → "Monthly character limit reached."
 - voice ID error → "Voice ID not recognized. Run `npx tsx scripts/list-voices.ts`."
+- Piper / local server: the script prints a one-line setup hint (install Piper, download a voice, start the server) — relay it in plain words.
 
 ---
 
@@ -371,3 +368,37 @@ Diagram node colors: `"blue"`, `"green"`, `"orange"`, `"purple"`, `"red"`
 - [ ] Flow nodes: 3–5 entries; labels short enough to fit *(auto)*
 - [ ] Image slides: `imagePath` matches an actual file in `public/pptx-slides/`, same letter case *(auto)*
 - [ ] Narration reads naturally aloud in the chosen language
+
+## Voice Engines
+
+Set `narration.provider` in `video.config.json`. Unchanged slides are reused, so switching engine re-records every slide once.
+
+| Engine | `provider` | Good for | Needs |
+|---|---|---|---|
+| ElevenLabs | `elevenlabs` | Best quality, many languages | API key in `.env` (paid beyond the free tier) |
+| Piper | `piper` | Free, offline, fast on CPU | `pip install piper-tts` + a downloaded voice |
+| Local voice server | `openai-compatible` | VieNeu-TTS (natural Vietnamese, handles English words), Kokoro-FastAPI (English and others, no Vietnamese), LocalAI | The server running; its URL in `narration.openaiCompatible.baseUrl` |
+| OpenAI | `openai-compatible` | Cloud voices | `baseUrl: https://api.openai.com/v1`, `apiKeyEnv: OPENAI_API_KEY`, key in `.env` |
+
+**Piper setup** (Vietnamese voice shown; `python -m piper.download_voices` lists all):
+```bash
+pip install piper-tts
+cd "$PIPELINE_DIR" && python -m piper.download_voices --download-dir models/piper vi_VN-vais1000-medium
+```
+```json
+"narration": { "provider": "piper", "voiceId": "vi_VN-vais1000-medium" }
+```
+
+**VieNeu-TTS setup** (local Vietnamese server, CPU works; see https://github.com/pnnbao97/VieNeu-TTS):
+```bash
+git clone https://github.com/pnnbao97/VieNeu-TTS && cd VieNeu-TTS && uv sync
+uv run python -m apps.openai_speech      # serves http://localhost:8000/v1
+```
+```json
+"narration": {
+  "provider": "openai-compatible",
+  "voiceId": "<a voice name from the VieNeu docs>",
+  "openaiCompatible": { "baseUrl": "http://localhost:8000/v1" }
+}
+```
+The server must stay running while audio is generated. Kokoro-FastAPI is the same with `baseUrl: http://localhost:8880/v1` and a voice such as `af_bella`.

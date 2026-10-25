@@ -16,6 +16,8 @@ const BASE_URL = "https://api.elevenlabs.io/v1";
 const OUTPUT_FORMAT = "mp3_44100_128";
 const API_KEY_PLACEHOLDER = "your_api_key_here";
 const MS_PER_SECOND = 1000;
+/** ElevenLabs rate-limits bursts; tested with 30-slide videos */
+const REQUEST_DELAY_MS = 1500;
 
 interface TimestampResponse {
   audio_base64: string;
@@ -32,6 +34,7 @@ interface VoicesResponse {
 
 export class ElevenLabsProvider implements TtsProvider {
   readonly id = TtsProviderId.ELEVENLABS;
+  readonly requestDelayMs = REQUEST_DELAY_MS;
 
   private constructor(
     private readonly apiKey: string,

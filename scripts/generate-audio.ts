@@ -4,7 +4,8 @@
  * video.config.json → narration.provider (see scripts/tts/).
  *
  * Usage: npx tsx scripts/generate-audio.ts [--force]
- * Requires: the provider's API key in .env (e.g. ELEVENLABS_API_KEY)
+ * Requires: the provider's setup — an API key in .env (ElevenLabs), a running
+ * server (openai-compatible), or piper-tts + a downloaded voice (piper)
  *
  * Output: <audioDir>/slide-XX.mp3 + slide-XX-timing.json + manifest.json
  * Slide length comes from the MP3 itself (ffprobe), not from the engine.
@@ -23,20 +24,20 @@ import type { VideoScript, AudioManifest, SlideAudioTiming } from "../src/types"
 import { loadVideoConfig } from "../src/config-loader";
 import { createTtsProvider, TtsSetupError } from "./tts";
 import type { TtsProvider } from "./tts";
-import { measureAudioDurationMs } from "./tts/audio-duration";
+import { measureAudioDurationMs } from "./tts/remotion-ffmpeg";
 import { sleep, withRetry } from "./tts/retry";
 
 const FORCE_FLAG = "--force";
 const MANIFEST_FILENAME = "manifest.json";
 const MS_PER_SECOND = 1000;
 
-/** Delay between API calls to avoid rate limiting (override for tests via TTS_RATE_LIMIT_DELAY_MS) */
-const RATE_LIMIT_DELAY_MS = Number(process.env.TTS_RATE_LIMIT_DELAY_MS ?? 1500);
+/** Env var that overrides the provider's pause between slides (e.g. a higher-tier API plan) */
+const DELAY_OVERRIDE_ENV = "TTS_RATE_LIMIT_DELAY_MS";
 
 async function main(): Promise<void> {
   const projectRoot = path.resolve(__dirname, "..");
   const config = loadVideoConfig(projectRoot);
-  const provider = createTtsProvider(config.narration);
+  const provider = createTtsProvider(config.narration, projectRoot);
   const force = process.argv.includes(FORCE_FLAG);
 
   const scriptPath = path.resolve(projectRoot, config.scriptPath);
@@ -82,8 +83,13 @@ export async function processSlide(
 
   console.log(`Generating: ${slideId}...`);
   const timing = await generateSlideAudio(provider, slideId, narration, sourceHash, audioDir);
-  await sleep(RATE_LIMIT_DELAY_MS);
+  await sleep(requestDelayMs(provider));
   return timing;
+}
+
+function requestDelayMs(provider: TtsProvider): number {
+  const override = process.env[DELAY_OVERRIDE_ENV];
+  return override === undefined ? provider.requestDelayMs : Number(override);
 }
 
 /** Hash of the text plus every provider setting that changes the sound */

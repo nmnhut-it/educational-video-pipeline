@@ -10,8 +10,9 @@ import { loadVideoConfig } from "../src/config-loader";
 import { createTtsProvider, TtsSetupError } from "./tts";
 
 async function main(): Promise<void> {
-  const config = loadVideoConfig(path.resolve(__dirname, ".."));
-  const provider = createTtsProvider(config.narration);
+  const projectRoot = path.resolve(__dirname, "..");
+  const config = loadVideoConfig(projectRoot);
+  const provider = createTtsProvider(config.narration, projectRoot);
   const voices = await provider.listVoices();
 
   console.log(`Found ${voices.length} ${provider.id} voices:\n`);

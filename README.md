@@ -2,7 +2,7 @@
 
 Turn any article, blog post, URL, or PowerPoint into a narrated MP4 video — just tell Claude what you want.
 
-**Output:** 1080p video with animated slides, syntax-highlighted code, diagrams, and AI voiceover (ElevenLabs by default; the voice engine is pluggable).
+**Output:** 1080p video with animated slides, syntax-highlighted code, diagrams, and AI voiceover — ElevenLabs in the cloud, or free local voices (Piper, VieNeu-TTS, Kokoro).
 
 ---
 
@@ -10,7 +10,10 @@ Turn any article, blog post, URL, or PowerPoint into a narrated MP4 video — ju
 
 - [Node.js LTS](https://nodejs.org) — the runtime
 - [Claude Code](https://claude.ai/code) — your conversational interface (`npm i -g @anthropic-ai/claude-code`)
-- [ElevenLabs account](https://elevenlabs.io) — AI voice narration (free tier: 10k chars/month)
+- A voice engine, one of:
+  - [ElevenLabs account](https://elevenlabs.io) — best quality, cloud (free tier: 10k chars/month)
+  - [Piper](https://github.com/OHF-Voice/piper1-gpl) — free, offline (`pip install piper-tts`; needs Python)
+  - A local speech server such as [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) (Vietnamese) or [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)
 
 ---
 
@@ -111,7 +114,23 @@ Claude will:
 - Each slide is spoken separately; slide length follows the real audio length
 - Re-running after an edit only re-records the slides that changed (saves credits); `--force` re-records all
 - Rate limits and server errors are retried automatically
-- The voice engine is set by `narration.provider` in `video.config.json`. ElevenLabs is built in; adding another engine is one file in `scripts/tts/` (see CLAUDE.md)
+- Choose the voice engine with `narration.provider` in `video.config.json`:
+
+| `provider` | Engine | Notes |
+|---|---|---|
+| `elevenlabs` | ElevenLabs (cloud) | Best quality; `ELEVENLABS_API_KEY` in `.env` |
+| `piper` | Piper (offline) | Free, fast on CPU; voices go in `models/piper/` |
+| `openai-compatible` | Any server with the OpenAI speech API | VieNeu-TTS, Kokoro-FastAPI, LocalAI, or OpenAI itself; set `narration.openaiCompatible.baseUrl` |
+
+Piper example (Vietnamese):
+```bash
+pip install piper-tts
+python -m piper.download_voices --download-dir models/piper vi_VN-vais1000-medium
+```
+```json
+"narration": { "provider": "piper", "voiceId": "vi_VN-vais1000-medium" }
+```
+`npm run list-voices` lists the voices of the chosen engine. Adding another engine is one file in `scripts/tts/` (see CLAUDE.md).
 
 ### Script check before audio
 - `npm run validate` catches mistakes that would break the video before any credits are spent: missing slide images (including wrong letter case), table rows with the wrong number of cells, diagram arrows to boxes that do not exist, labels too long for their box

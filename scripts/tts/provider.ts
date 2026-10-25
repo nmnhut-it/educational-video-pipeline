@@ -35,6 +35,8 @@ export interface VoiceInfo {
 
 export interface TtsProvider {
   readonly id: TtsProviderId;
+  /** Pause between slides, to stay under a cloud API's rate limit; 0 for local engines */
+  readonly requestDelayMs: number;
   /**
    * Every setting that changes how the audio sounds (voice, model, style...),
    * as a stable string. Goes into the per-slide cache hash; must not contain secrets.

@@ -8,7 +8,8 @@
     "generate-audio": "npx tsx scripts/generate-audio.ts",
     "validate": "npx tsx scripts/validate-script.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "list-voices": "npx tsx scripts/list-voices.ts"
   },
   "dependencies": {
     "@remotion/cli": "4.0.242",

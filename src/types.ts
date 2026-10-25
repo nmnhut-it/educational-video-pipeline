@@ -151,7 +151,32 @@ export type ThemeId = "light" | "dark";
 
 /** Text-to-speech engines that scripts/tts/ can drive. Add one value per provider file. */
 export enum TtsProviderId {
+  /** ElevenLabs cloud API */
   ELEVENLABS = "elevenlabs",
+  /** Any server with POST /v1/audio/speech: VieNeu-TTS, Kokoro-FastAPI, LocalAI, OpenAI */
+  OPENAI_COMPATIBLE = "openai-compatible",
+  /** Piper, fully offline on CPU (pip install piper-tts) */
+  PIPER = "piper",
+}
+
+/** Settings for TtsProviderId.OPENAI_COMPATIBLE */
+export interface OpenAiCompatibleConfig {
+  /** Server base URL including /v1, e.g. http://localhost:8000/v1 for VieNeu-TTS */
+  baseUrl: string;
+  /** Model name sent to the server ("tts-1" is accepted or ignored by most local servers) */
+  model: string;
+  /** Name of the .env variable holding the API key; local servers usually need none */
+  apiKeyEnv: string;
+  /** Speaking speed, 1.0 = normal */
+  speed: number;
+}
+
+/** Settings for TtsProviderId.PIPER */
+export interface PiperConfig {
+  /** Python executable that has piper-tts installed */
+  python: string;
+  /** Folder with downloaded voices (*.onnx + *.onnx.json), relative to the project root */
+  dataDir: string;
 }
 
 /** Narration settings for audio generation */
@@ -160,9 +185,9 @@ export interface NarrationConfig {
   provider: TtsProviderId;
   /** Language code (e.g., "vi", "en") */
   language: string;
-  /** Voice ID in the chosen provider */
+  /** Voice in the chosen provider: ElevenLabs voice ID, server voice name, or Piper voice name */
   voiceId: string;
-  /** Model ID in the chosen provider */
+  /** ElevenLabs model ID (other providers keep their model in their own section) */
   modelId: string;
   /** ElevenLabs voice settings (other providers ignore them) */
   voiceSettings: {
@@ -170,6 +195,10 @@ export interface NarrationConfig {
     similarityBoost: number;
     style: number;
   };
+  /** Used when provider is "openai-compatible" */
+  openaiCompatible: OpenAiCompatibleConfig;
+  /** Used when provider is "piper" */
+  piper: PiperConfig;
 }
 
 /** Per-video configuration loaded from video.config.json */
@@ -186,7 +215,7 @@ export interface VideoConfig {
   audioDir: string;
 }
 
-/** Per-slide audio timing from ElevenLabs */
+/** Per-slide audio timing written by generate-audio.ts */
 export interface SlideAudioTiming {
   slideId: string;
   durationMs: number;

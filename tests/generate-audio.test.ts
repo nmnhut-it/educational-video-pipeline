@@ -5,15 +5,14 @@
  */
 import { test, before, after } from "node:test";
 import * as assert from "node:assert/strict";
-import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { processSlide } from "../scripts/generate-audio";
 import type { TtsProvider } from "../scripts/tts";
+import { runFfmpeg } from "../scripts/tts/remotion-ffmpeg";
 import { TtsProviderId } from "../src/types";
 
-const REMOTION_CLI = path.join(path.dirname(require.resolve("@remotion/cli/package.json")), "remotion-cli.js");
 const ONE_SECOND_MS = 1000;
 const DURATION_TOLERANCE_MS = 100;
 let mp3: Buffer;
@@ -22,7 +21,7 @@ let audioDir: string;
 before(() => {
   audioDir = fs.mkdtempSync(path.join(os.tmpdir(), "evp-audio-"));
   const sine = path.join(audioDir, "sine.mp3");
-  execFileSync(process.execPath, [REMOTION_CLI, "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1", sine]);
+  runFfmpeg(["-y", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1", sine]);
   mp3 = fs.readFileSync(sine);
 });
 
@@ -32,6 +31,7 @@ after(() => fs.rmSync(audioDir, { recursive: true, force: true }));
 function fakeProvider(voice: string): TtsProvider & { calls: number } {
   return {
     id: TtsProviderId.ELEVENLABS,
+    requestDelayMs: 0,
     calls: 0,
     cacheKey: () => voice,
     async synthesize() {

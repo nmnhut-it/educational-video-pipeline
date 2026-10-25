@@ -6,7 +6,7 @@ This file gives Claude Code context for working on this project. Read it at the 
 
 ## What This Is
 
-A Remotion pipeline that renders narrated 1080p MP4 educational videos from a JSON slide script. Narration comes from a pluggable text-to-speech engine (ElevenLabs today; see `scripts/tts/`). It is packaged as a Claude Code skill so non-technical users can invoke the full pipeline conversationally.
+A Remotion pipeline that renders narrated 1080p MP4 educational videos from a JSON slide script. Narration comes from a pluggable text-to-speech engine (`scripts/tts/`): ElevenLabs (cloud), Piper (offline), or any OpenAI-compatible speech server such as VieNeu-TTS or Kokoro-FastAPI (local). It is packaged as a Claude Code skill so non-technical users can invoke the full pipeline conversationally.
 
 **Pipeline flow:**
 `content/video-script.json` → `scripts/validate-script.ts` → `scripts/generate-audio.ts` (TTS provider) → `npx remotion render` → `output/<slug>.mp4`
@@ -27,15 +27,16 @@ A Remotion pipeline that renders narrated 1080p MP4 educational videos from a JS
 | `src/slides/` | One component per slide type (8 components + ImageSlide) |
 | `src/components/` | Shared UI: `AnimatedText`, `AudioTrack`, `BoxDiagram`, `CodeBlock`, `FlowChart`, `ProgressBar`, `SlideLayout`; `svg-text.ts` shrinks SVG labels to fit their box |
 | `scripts/generate-audio.ts` | Speaks each slide with the configured TTS provider, saves per-slide MP3 + timing JSON + `manifest.json`. Reuses unchanged slides (hash cache); `--force` redoes all. |
-| `scripts/tts/` | TTS engines: `provider.ts` (interface), `elevenlabs.ts`, `index.ts` (picks one from `narration.provider`), `retry.ts` (backoff on 429/5xx), `audio-duration.ts` (ffprobe) |
+| `scripts/tts/` | TTS engines: `provider.ts` (interface), `elevenlabs.ts`, `openai-compatible.ts` (POST /v1/audio/speech servers), `piper.ts` (offline CLI), `index.ts` (picks one from `narration.provider`), `retry.ts` (backoff on 429/5xx), `remotion-ffmpeg.ts` (duration + WAV→MP3 via Remotion's bundled ffmpeg) |
 | `scripts/validate-script.ts` | Validates the script before audio; exits 1 on errors |
 | `scripts/list-voices.ts` | Lists the configured provider's voices for setup |
 | `scripts/pptx-to-images.ps1` | PowerShell COM: exports PPTX slides as PNGs + `slide-notes.json` with speaker notes |
 | `scripts/pptx-add-notes.ps1` | PowerShell COM: appends narration from `video-script.json` back into PPTX slide notes |
 | `content/video-script.json` | The active slide script. Edit this to change the video content. |
-| `video.config.json` | Per-video settings: language, voiceId, theme, paths. Written by the Claude skill before each run. |
+| `video.config.json` | Per-video settings: language, voice engine + voice, theme, paths. The skill edits only language and theme. |
+| `models/` | Downloaded local voice models (Piper voices in `models/piper/`). Gitignored. |
 | `.env` | Provider keys, e.g. `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`. Never committed. |
-| `tests/` | `node:test` suites run with `npm test` (timing, validator, audio cache with a fake provider) |
+| `tests/` | `node:test` suites run with `npm test`: timing, validator, audio cache (fake provider), OpenAI-compatible provider (fake local server), Piper (real run, skipped if Piper or the voice is not installed) |
 | `.claude/plugins/educational-video/` | The Claude Code skill definition (SKILL.md, schema, examples) |
 
 ---
@@ -78,11 +79,13 @@ Any image referenced in a composition must be accessed via `staticFile('path/rel
 **The theme is picked when the bundle is built.**
 `src/constants.ts` imports `video.config.json` directly (the Remotion bundle runs in a browser and cannot use `fs`) and exports `COLORS` for the chosen theme. Components must use `COLORS`, never `LIGHT_COLORS`/`DARK_COLORS` or literal colours.
 
-**`video.config.json` is written before each run.**
+**`video.config.json` holds per-video and per-machine settings.**
 `config-loader.ts` reads it and fills defaults for any missing fields. Node scripts should always go through `loadVideoConfig()`, never read `video.config.json` directly. (The one exception is `constants.ts`, see above.)
 
 **TTS rate limiting.**
-`generate-audio.ts` waits 1500ms between API calls (`TTS_RATE_LIMIT_DELAY_MS` overrides it). For 30-slide videos this takes ~45–75 seconds. Do not reduce this delay without testing. 429 and 5xx responses are retried with backoff in `scripts/tts/retry.ts`.
+Each provider sets `requestDelayMs`, the pause between slides: 1500ms for ElevenLabs (do not reduce without testing), 0 for local engines. `TTS_RATE_LIMIT_DELAY_MS` overrides it (e.g. a hosted OpenAI-compatible server). 429 and 5xx responses are retried with backoff in `scripts/tts/retry.ts`.
+
+**Piper takes its text on stdin with `PYTHONUTF8=1`.** Passed as an argument after `--`, Piper speaks the `--` too; without UTF-8 mode, Windows Python reads stdin in the ANSI code page and garbles Vietnamese.
 
 **ElevenLabs `output_format` is a query parameter.** Sending it in the JSON body is silently ignored.
 
@@ -104,9 +107,11 @@ Edit `DEFAULT_DURATIONS` in `src/timing.ts`. Units are frames at 30 FPS (e.g. 18
 
 ### Add a voice engine (TTS provider)
 1. Add a value to `TtsProviderId` in `src/types.ts`
-2. Write `scripts/tts/<name>.ts` implementing `TtsProvider` (`cacheKey`, `synthesize` → MP3 bytes, `listVoices`); throw `TtsSetupError` for missing keys and `httpErrorFrom()` errors for HTTP failures so retries work
-3. Add a `case` in `createTtsProvider()` in `scripts/tts/index.ts`
+2. Write `scripts/tts/<name>.ts` implementing `TtsProvider` (`requestDelayMs`, `cacheKey`, `synthesize` → MP3 bytes, `listVoices`); throw `TtsSetupError` for missing setup and `httpErrorFrom()` errors for HTTP failures so retries work. WAV-only engines can use `convertToMp3()` from `remotion-ffmpeg.ts`.
+3. Add a `case` in `createTtsProvider()` in `scripts/tts/index.ts`; if it needs settings, add a section to `NarrationConfig` (`src/types.ts`), its defaults and merge in `src/config-loader.ts`
 4. Set `"provider": "<name>"` under `narration` in `video.config.json`
+
+A server that already speaks the OpenAI speech API needs no code: use `openai-compatible` with its `baseUrl`.
 
 ### Validate and test
 ```bash
