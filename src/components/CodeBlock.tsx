@@ -11,8 +11,8 @@ interface CodeBlockProps {
 
 /**
  * Syntax-highlighted code block with line-by-line reveal.
- * Uses inline styling instead of react-syntax-highlighter
- * for Remotion compatibility (no DOM-dependent highlighting).
+ * Uses a small regex highlighter (keywords, strings, comments)
+ * so every frame renders the same without a DOM-dependent library.
  */
 export const CodeBlock: React.FC<CodeBlockProps> = ({
   code,

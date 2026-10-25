@@ -2,7 +2,7 @@
 
 Turn any article, blog post, URL, or PowerPoint into a narrated MP4 video — just tell Claude what you want.
 
-**Output:** 1080p video with animated slides, syntax-highlighted code, diagrams, and AI voiceover (ElevenLabs).
+**Output:** 1080p video with animated slides, syntax-highlighted code, diagrams, and AI voiceover (ElevenLabs by default; the voice engine is pluggable).
 
 ---
 
@@ -79,7 +79,7 @@ Claude will:
 4. Ask two questions: narration language + light/dark theme
 5. Generate a structured slide script (15–30 slides)
 6. Show you a preview — make changes or approve
-7. Generate ElevenLabs voice narration (with live progress)
+7. Check the script for mistakes, then generate voice narration (with live progress)
 8. Render the final MP4 (with live progress)
 
 **Output:** `output/<video-title>.mp4`
@@ -102,10 +102,19 @@ Claude will:
 | `outro` | Closing slide with evolution summary |
 
 ### PowerPoint / PPTX support
-- Converts each slide to a PNG image — your original design is preserved
+- Converts each slide to a 1920 px PNG image — your original design is preserved
 - Extracts speaker notes and offers to use them as narration
 - After the video is done, offers to write the AI narration back into the PPTX as slide notes
-- Requires [LibreOffice](https://www.libreoffice.org) (free) or Microsoft Office
+- Requires Microsoft PowerPoint (Windows), or [LibreOffice](https://www.libreoffice.org) plus Poppler's `pdftoppm` (free; no speaker notes)
+
+### Voice narration
+- Each slide is spoken separately; slide length follows the real audio length
+- Re-running after an edit only re-records the slides that changed (saves credits); `--force` re-records all
+- Rate limits and server errors are retried automatically
+- The voice engine is set by `narration.provider` in `video.config.json`. ElevenLabs is built in; adding another engine is one file in `scripts/tts/` (see CLAUDE.md)
+
+### Script check before audio
+- `npm run validate` catches mistakes that would break the video before any credits are spent: missing slide images (including wrong letter case), table rows with the wrong number of cells, diagram arrows to boxes that do not exist, labels too long for their box
 
 ### Smart setup wizard
 - Claude finds your pipeline installation automatically (env var, current dir, saved config, common locations)
@@ -121,6 +130,9 @@ Claude will:
 - Audio generation polls the log every 10–15s and shows which slide is being processed
 - Video render polls every 15s and shows frame progress
 
+### Light and dark themes
+- Set `"theme": "light"` or `"dark"` in `video.config.json`
+
 ---
 
 ## Manual usage (advanced)
@@ -129,8 +141,15 @@ Claude will:
 # Preview in Remotion Studio (browser)
 npm run dev
 
-# Generate audio only
+# Check the script
+npm run validate
+
+# Generate audio only (unchanged slides are reused; add -- --force to redo all)
 npm run generate-audio
+
+# Tests and type check
+npm test
+npm run typecheck
 
 # Render video
 npx remotion render EducationalVideo output/my-video.mp4
@@ -143,4 +162,4 @@ Edit `content/video-script.json` directly. Schema and examples are in:
 
 ## Tech stack
 
-[Remotion](https://remotion.dev) · [ElevenLabs](https://elevenlabs.io) · [Claude Code](https://claude.ai/code) · TypeScript · React 18
+[Remotion](https://remotion.dev) · [ElevenLabs](https://elevenlabs.io) (pluggable) · [Claude Code](https://claude.ai/code) · TypeScript · React 18

@@ -13,7 +13,7 @@ interface SlideLayoutProps {
   backgroundColor?: string;
 }
 
-/** Dark-themed wrapper with padding and progress bar for all slides */
+/** Themed wrapper with padding and progress bar for all slides */
 export const SlideLayout: React.FC<SlideLayoutProps> = ({
   children,
   slideIndex,

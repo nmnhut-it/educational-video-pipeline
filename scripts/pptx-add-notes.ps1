@@ -4,7 +4,8 @@
 # Output: saves modified PPTX in-place (original is backed up as file.pptx.bak)
 #
 # Narration is appended after any existing notes, separated by a divider line.
-# Only image-type slides are matched to original slides (by slideIndex in imagePath).
+# Only image-type slides are matched to original slides (by the slide number in imagePath:
+# "Slide3.PNG" from PowerPoint, or "slide-03.png" from LibreOffice + pdftoppm).
 # All other slide types (title, outro, section-header, etc.) are skipped.
 
 param(
@@ -19,8 +20,9 @@ if (-not (Test-Path $pptx))   { Write-Error "PPTX not found: $pptx";   exit 1 }
 if (-not (Test-Path $script)) { Write-Error "Script not found: $script"; exit 1 }
 
 # Parse video-script.json — collect image slides and their narration
-$videoScript = Get-Content $script -Raw | ConvertFrom-Json
-$imageSlides = $videoScript.slides | Where-Object { $_.type -eq "image" }
+# -Encoding UTF8: Windows PowerShell 5.1 reads BOM-less files as ANSI, which garbles Vietnamese text
+$videoScript = Get-Content $script -Raw -Encoding UTF8 | ConvertFrom-Json
+$imageSlides = @($videoScript.slides | Where-Object { $_.type -eq "image" })
 
 if ($imageSlides.Count -eq 0) {
   Write-Host "No image-type slides found in script. Nothing to write back."
@@ -28,17 +30,17 @@ if ($imageSlides.Count -eq 0) {
 }
 
 # Build a map: slideIndex (1-based) -> narration text
-# imagePath is like "pptx-slides/Slide3.PNG" — extract the number from the filename
+# imagePath is like "pptx-slides/Slide3.PNG" or "pptx-slides/slide-03.png" — take the number
+$slideNumberPattern = '(?i)slide-?(\d+)\.(png|jpe?g)$'
 $narrationMap = @{}
 foreach ($slide in $imageSlides) {
-  if ($slide.imagePath -match "Slide(\d+)\.", [ref]$null) {
-    $idx = [int]($slide.imagePath -replace ".*Slide(\d+)\..*", '$1')
-    $narrationMap[$idx] = $slide.narration
+  if ($slide.imagePath -match $slideNumberPattern) {
+    $narrationMap[[int]$Matches[1]] = $slide.narration
   }
 }
 
 if ($narrationMap.Count -eq 0) {
-  Write-Host "Could not parse slide indices from imagePath fields. Expected format: pptx-slides/SlideN.PNG"
+  Write-Host "Could not parse slide numbers from imagePath fields. Expected pptx-slides/SlideN.PNG or pptx-slides/slide-N.png"
   exit 1
 }
 

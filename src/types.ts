@@ -18,7 +18,7 @@ interface SlideBase {
   type: SlideType;
   /** Section name for progress tracking and transitions */
   section: string;
-  /** Vietnamese narration text for this slide */
+  /** Narration text for this slide, in the language set in video.config.json */
   narration: string;
 }
 
@@ -149,15 +149,22 @@ export interface VideoScript {
 /** Supported theme identifiers */
 export type ThemeId = "light" | "dark";
 
+/** Text-to-speech engines that scripts/tts/ can drive. Add one value per provider file. */
+export enum TtsProviderId {
+  ELEVENLABS = "elevenlabs",
+}
+
 /** Narration settings for audio generation */
 export interface NarrationConfig {
+  /** Which text-to-speech engine to use (default: elevenlabs) */
+  provider: TtsProviderId;
   /** Language code (e.g., "vi", "en") */
   language: string;
-  /** ElevenLabs voice ID */
+  /** Voice ID in the chosen provider */
   voiceId: string;
-  /** ElevenLabs model ID */
+  /** Model ID in the chosen provider */
   modelId: string;
-  /** Voice settings */
+  /** ElevenLabs voice settings (other providers ignore them) */
   voiceSettings: {
     stability: number;
     similarityBoost: number;
@@ -183,6 +190,8 @@ export interface VideoConfig {
 export interface SlideAudioTiming {
   slideId: string;
   durationMs: number;
+  /** sha256 of the text + voice settings; generate-audio.ts reuses the MP3 while it matches */
+  sourceHash?: string;
   /** Character-level timestamps for animated text sync */
   characters?: Array<{
     character: string;
@@ -194,6 +203,9 @@ export interface SlideAudioTiming {
 /** Audio manifest aggregating all slide timings */
 export interface AudioManifest {
   generatedAt: string;
+  /** TTS engine that made the audio */
+  provider: TtsProviderId;
+  /** voiceId from video.config.json; empty when the provider took it from .env */
   voiceId: string;
   totalDurationMs: number;
   slides: SlideAudioTiming[];

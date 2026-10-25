@@ -1,23 +1,23 @@
 {
-  "name": "blog-video-pipeline",
+  "name": "educational-video-pipeline",
   "version": "1.0.0",
-  "description": "Blog-to-video pipeline: LLM Tools Evolution with Remotion + ElevenLabs",
+  "description": "Narrated educational videos from a JSON slide script: Remotion + pluggable text-to-speech",
   "scripts": {
     "dev": "remotion studio",
-    "build": "remotion render EducationalVideo output/blog-video.mp4",
-    "generate-audio": "npx tsx scripts/generate-audio.ts"
+    "build": "remotion render EducationalVideo output/video.mp4",
+    "generate-audio": "npx tsx scripts/generate-audio.ts",
+    "validate": "npx tsx scripts/validate-script.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@remotion/cli": "4.0.242",
     "remotion": "4.0.242",
-    "@remotion/player": "4.0.242",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-syntax-highlighter": "^15.6.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "typescript": "^5.7.2",
     "tsx": "^4.19.2",
     "dotenv": "^16.4.7",

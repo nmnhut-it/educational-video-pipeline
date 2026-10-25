@@ -5,7 +5,8 @@ export const VIDEO = {
   FPS: 30,
 } as const;
 
-import type { ThemeId } from "./types";
+import type { ThemeId, VideoConfig } from "./types";
+import videoConfig from "../video.config.json";
 
 /** Color palette keys shared by light and dark themes */
 export interface ThemeColors {
@@ -22,10 +23,16 @@ export interface ThemeColors {
   ACCENT_PURPLE: string;
   BORDER: string;
   CODE_BG: string;
+  /** Text drawn on top of an accent-filled shape (e.g. an active flow node) */
+  TEXT_ON_ACCENT: string;
+  /** Secondary text on top of an accent-filled shape */
+  TEXT_ON_ACCENT_MUTED: string;
+  /** Letterbox colour behind full-screen images */
+  IMAGE_BACKDROP: string;
 }
 
 /** Light theme colors (default) */
-export const COLORS: ThemeColors = {
+export const LIGHT_COLORS: ThemeColors = {
   BG_PRIMARY: "#ffffff",
   BG_SECONDARY: "#f6f8fa",
   BG_TERTIARY: "#eaeef2",
@@ -39,6 +46,9 @@ export const COLORS: ThemeColors = {
   ACCENT_PURPLE: "#8250df",
   BORDER: "#d1d9e0",
   CODE_BG: "#f6f8fa",
+  TEXT_ON_ACCENT: "#ffffff",
+  TEXT_ON_ACCENT_MUTED: "rgba(255,255,255,0.7)",
+  IMAGE_BACKDROP: "#000000",
 };
 
 /** Dark theme colors */
@@ -56,12 +66,24 @@ export const DARK_COLORS: ThemeColors = {
   ACCENT_PURPLE: "#bc8cff",
   BORDER: "#30363d",
   CODE_BG: "#161b22",
+  TEXT_ON_ACCENT: "#0d1117",
+  TEXT_ON_ACCENT_MUTED: "rgba(13,17,23,0.7)",
+  IMAGE_BACKDROP: "#000000",
 };
 
 /** Resolve theme colors by ID; defaults to light */
 export function getThemeColors(theme: ThemeId = "light"): ThemeColors {
-  return theme === "dark" ? DARK_COLORS : COLORS;
+  return theme === "dark" ? DARK_COLORS : LIGHT_COLORS;
 }
+
+/**
+ * Active palette, chosen from `theme` in video.config.json when the bundle is built.
+ * The Remotion bundle runs in a browser, so it imports the JSON instead of
+ * calling the fs-based loadVideoConfig(). Every component imports this.
+ */
+export const COLORS: ThemeColors = getThemeColors(
+  (videoConfig as Partial<VideoConfig>).theme
+);
 
 /** Font families */
 export const FONTS = {
@@ -80,6 +102,14 @@ export const LAYOUT = {
   PROGRESS_BAR_HEIGHT: 5,
   /** Max width for content area */
   CONTENT_MAX_WIDTH: 1720,
+} as const;
+
+/** Box sizes for SVG charts; the script validator uses them to flag labels too long to fit */
+export const CHART_LAYOUT = {
+  FLOW_NODE_WIDTH: 280,
+  FLOW_TEXT_INSET_X: 14,
+  DIAGRAM_BOX_WIDTH: 320,
+  DIAGRAM_TEXT_INSET_X: 16,
 } as const;
 
 /** Timing defaults in frames (at 30fps) */

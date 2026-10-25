@@ -1,5 +1,6 @@
 {
   "narration": {
+    "provider": "elevenlabs",
     "language": "vi",
     "voiceId": "",
     "modelId": "eleven_v3",

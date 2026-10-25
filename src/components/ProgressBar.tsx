@@ -7,7 +7,11 @@ interface ProgressBarProps {
   totalSlides: number;
 }
 
-/** Thin accent-colored bar at the top showing video progress */
+/**
+ * Thin accent-colored bar at the top showing video progress.
+ * Inside a <Sequence>, useVideoConfig().durationInFrames is the slide's own length.
+ * No CSS transitions: Remotion renders frame by frame, so they would only flicker.
+ */
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   slideIndex,
   totalSlides,
@@ -41,7 +45,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
           height: "100%",
           width: `${totalProgress * 100}%`,
           backgroundColor: COLORS.ACCENT_BLUE,
-          transition: "width 0.1s linear",
         }}
       />
     </div>

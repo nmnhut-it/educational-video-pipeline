@@ -1,7 +1,8 @@
 import React from "react";
 import { useCurrentFrame, spring, useVideoConfig } from "remotion";
-import { COLORS, FONTS, FONT_SIZES } from "../constants";
+import { CHART_LAYOUT, COLORS, FONTS, FONT_SIZES } from "../constants";
 import type { FlowNode } from "../types";
+import { fitFontSize } from "./svg-text";
 
 interface FlowChartProps {
   nodes: FlowNode[];
@@ -9,10 +10,13 @@ interface FlowChartProps {
   summary?: string;
 }
 
-const NODE_WIDTH = 280;
+const NODE_WIDTH = CHART_LAYOUT.FLOW_NODE_WIDTH;
 const NODE_HEIGHT = 100;
 const NODE_GAP = 30;
 const ARROW_WIDTH = 40;
+const TEXT_WIDTH = NODE_WIDTH - CHART_LAYOUT.FLOW_TEXT_INSET_X * 2;
+const SVG_HEIGHT_WITH_DESCRIPTION = 160;
+const SVG_HEIGHT_LABEL_ONLY = 120;
 
 /** Horizontal flow diagram with animated nodes and connecting arrows */
 export const FlowChart: React.FC<FlowChartProps> = ({ nodes, summary }) => {
@@ -22,7 +26,8 @@ export const FlowChart: React.FC<FlowChartProps> = ({ nodes, summary }) => {
   const totalWidth =
     nodes.length * NODE_WIDTH + (nodes.length - 1) * (NODE_GAP + ARROW_WIDTH);
   const svgWidth = Math.max(totalWidth + 60, 800);
-  const svgHeight = nodes[0]?.description ? 160 : 120;
+  const hasDescription = nodes.some((n) => n.description);
+  const svgHeight = hasDescription ? SVG_HEIGHT_WITH_DESCRIPTION : SVG_HEIGHT_LABEL_ONLY;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -32,7 +37,7 @@ export const FlowChart: React.FC<FlowChartProps> = ({ nodes, summary }) => {
         style={{ maxWidth: 1600 }}
       >
         {nodes.map((node, i) => (
-          <FlowNode
+          <FlowNodeBox
             key={i}
             node={node}
             index={i}
@@ -62,7 +67,7 @@ export const FlowChart: React.FC<FlowChartProps> = ({ nodes, summary }) => {
   );
 };
 
-const FlowNode: React.FC<{
+const FlowNodeBox: React.FC<{
   node: FlowNode;
   index: number;
   x: number;
@@ -80,7 +85,7 @@ const FlowNode: React.FC<{
 
   const nodeColor = node.active ? COLORS.ACCENT_BLUE : COLORS.BG_TERTIARY;
   const borderColor = node.active ? COLORS.ACCENT_BLUE : COLORS.BORDER;
-  const textColor = node.active ? "#ffffff" : COLORS.TEXT_PRIMARY;
+  const textColor = node.active ? COLORS.TEXT_ON_ACCENT : COLORS.TEXT_PRIMARY;
 
   return (
     <g opacity={progress}>
@@ -98,7 +103,7 @@ const FlowNode: React.FC<{
         textAnchor="middle"
         fill={textColor}
         fontFamily={FONTS.CODE}
-        fontSize={FONT_SIZES.CHART_LABEL}
+        fontSize={fitFontSize(node.label, TEXT_WIDTH, FONT_SIZES.CHART_LABEL)}
         fontWeight={700}
       >
         {node.label}
@@ -108,9 +113,9 @@ const FlowNode: React.FC<{
           x={x + NODE_WIDTH / 2}
           y={y + NODE_HEIGHT / 2 + 18}
           textAnchor="middle"
-          fill={node.active ? "rgba(255,255,255,0.7)" : COLORS.TEXT_SECONDARY}
+          fill={node.active ? COLORS.TEXT_ON_ACCENT_MUTED : COLORS.TEXT_SECONDARY}
           fontFamily={FONTS.BODY}
-          fontSize={FONT_SIZES.CHART_SUBLABEL}
+          fontSize={fitFontSize(node.description, TEXT_WIDTH, FONT_SIZES.CHART_SUBLABEL)}
         >
           {node.description}
         </text>

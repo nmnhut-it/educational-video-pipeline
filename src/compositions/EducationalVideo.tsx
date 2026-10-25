@@ -21,24 +21,27 @@ import type {
   VideoScript,
   AudioManifest,
 } from "../types";
-import { VIDEO, TIMING, COLORS } from "../constants";
-import videoScript from "../../content/video-script.json";
+import { TIMING, COLORS } from "../constants";
+import { computeSlideDurations, findSlideAudio } from "../timing";
 
 /**
  * Top-level composition that assembles all slides with audio sync.
  * Renders any VideoScript — not coupled to a specific topic.
  */
 
-interface EducationalVideoProps {
+/** A type alias (not an interface) so Remotion accepts it as composition props */
+export type EducationalVideoProps = {
+  script: VideoScript;
   audioManifest?: AudioManifest;
-}
+};
 
-export const EducationalVideo: React.FC<EducationalVideoProps> = ({ audioManifest }) => {
-  const script = videoScript as VideoScript;
+export const EducationalVideo: React.FC<EducationalVideoProps> = ({
+  script,
+  audioManifest,
+}) => {
   const slides = script.slides;
   const slideDurations = computeSlideDurations(slides, audioManifest);
   const totalSlides = slides.length;
-  const hasAudio = !!audioManifest;
 
   let frameOffset = 0;
 
@@ -65,7 +68,8 @@ export const EducationalVideo: React.FC<EducationalVideoProps> = ({ audioManifes
               slideIndex={index}
               totalSlides={totalSlides}
             />
-            {hasAudio && (
+            {/* Slides with empty narration have no MP3; a missing file fails the render */}
+            {findSlideAudio(slide.id, audioManifest) && (
               <AudioTrack src={`audio/${slide.id}.mp3`} />
             )}
           </Sequence>
@@ -107,7 +111,7 @@ const SlideRenderer: React.FC<{
   }
 };
 
-/** Cross-fade overlay for section transitions */
+/** Fades in from the theme background at the start of each new section */
 const FadeIn: React.FC = () => {
   const frame = useCurrentFrame();
   const opacity = interpolate(
@@ -127,38 +131,3 @@ const FadeIn: React.FC = () => {
     />
   );
 };
-
-/** Computes frame duration per slide from audio or defaults */
-function computeSlideDurations(
-  slides: SlideData[],
-  manifest?: AudioManifest
-): number[] {
-  return slides.map((slide) => {
-    if (manifest) {
-      const audioInfo = manifest.slides.find((s) => s.slideId === slide.id);
-      if (audioInfo && audioInfo.durationMs > 0) {
-        const audioFrames = Math.ceil(
-          (audioInfo.durationMs / 1000) * VIDEO.FPS
-        );
-        return audioFrames + TIMING.AUDIO_TAIL_PADDING_FRAMES;
-      }
-    }
-    return getDefaultDuration(slide.type);
-  });
-}
-
-/** Default frame durations by slide type (no audio) */
-function getDefaultDuration(type: SlideType): number {
-  const defaults: Record<SlideType, number> = {
-    [SlideType.TITLE]: 180,
-    [SlideType.SECTION_HEADER]: 120,
-    [SlideType.CONCEPT]: 210,
-    [SlideType.CODE]: 300,
-    [SlideType.DIAGRAM]: 300,
-    [SlideType.FLOW]: 300,
-    [SlideType.TABLE]: 240,
-    [SlideType.OUTRO]: 210,
-    [SlideType.IMAGE]: 270,
-  };
-  return defaults[type];
-}

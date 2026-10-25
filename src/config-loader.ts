@@ -6,12 +6,14 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { TtsProviderId } from "./types";
 import type { VideoConfig } from "./types";
 
 const CONFIG_FILENAME = "video.config.json";
 
 const DEFAULT_CONFIG: VideoConfig = {
   narration: {
+    provider: TtsProviderId.ELEVENLABS,
     language: "vi",
     voiceId: process.env.ELEVENLABS_VOICE_ID ?? "",
     modelId: "eleven_v3",

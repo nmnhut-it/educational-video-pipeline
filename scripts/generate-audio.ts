@@ -1,157 +1,136 @@
 /**
- * ElevenLabs audio generator for educational video pipeline.
- * Generates per-slide MP3 files with character-level timestamps.
- * Reads voice/path settings from video.config.json (falls back to defaults).
+ * Narration audio generator for the educational video pipeline.
+ * Speaks each slide's narration with the TTS engine set in
+ * video.config.json → narration.provider (see scripts/tts/).
  *
- * Usage: npx tsx scripts/generate-audio.ts
- * Requires: ELEVENLABS_API_KEY in .env
+ * Usage: npx tsx scripts/generate-audio.ts [--force]
+ * Requires: the provider's API key in .env (e.g. ELEVENLABS_API_KEY)
  *
- * Output: <audioDir>/slide-XX.mp3 + timing JSON + manifest.json
+ * Output: <audioDir>/slide-XX.mp3 + slide-XX-timing.json + manifest.json
+ * Slide length comes from the MP3 itself (ffprobe), not from the engine.
+ *
+ * Caching: each timing file stores a hash of the text + provider settings.
+ * A slide whose hash still matches (and whose MP3 exists) is reused, so
+ * re-running after editing two slides only pays for those two.
+ * --force regenerates every slide.
  */
 
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import "dotenv/config";
 import type { VideoScript, AudioManifest, SlideAudioTiming } from "../src/types";
 import { loadVideoConfig } from "../src/config-loader";
+import { createTtsProvider, TtsSetupError } from "./tts";
+import type { TtsProvider } from "./tts";
+import { measureAudioDurationMs } from "./tts/audio-duration";
+import { sleep, withRetry } from "./tts/retry";
 
-const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1";
-const OUTPUT_FORMAT = "mp3_44100_128";
+const FORCE_FLAG = "--force";
+const MANIFEST_FILENAME = "manifest.json";
+const MS_PER_SECOND = 1000;
 
-/** Delay between API calls to avoid rate limiting */
-const RATE_LIMIT_DELAY_MS = 1500;
-
-interface ElevenLabsTimestampResponse {
-  audio_base64: string;
-  alignment: {
-    characters: string[];
-    character_start_times_seconds: number[];
-    character_end_times_seconds: number[];
-  };
-}
+/** Delay between API calls to avoid rate limiting (override for tests via TTS_RATE_LIMIT_DELAY_MS) */
+const RATE_LIMIT_DELAY_MS = Number(process.env.TTS_RATE_LIMIT_DELAY_MS ?? 1500);
 
 async function main(): Promise<void> {
   const projectRoot = path.resolve(__dirname, "..");
   const config = loadVideoConfig(projectRoot);
-
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey || apiKey === "your_api_key_here") {
-    console.error("Set ELEVENLABS_API_KEY in .env");
-    process.exit(1);
-  }
-
-  /** Voice ID: config > env > error */
-  const voiceId = config.narration.voiceId || process.env.ELEVENLABS_VOICE_ID;
-  if (!voiceId) {
-    console.error("Set voiceId in video.config.json or ELEVENLABS_VOICE_ID in .env");
-    process.exit(1);
-  }
+  const provider = createTtsProvider(config.narration);
+  const force = process.argv.includes(FORCE_FLAG);
 
   const scriptPath = path.resolve(projectRoot, config.scriptPath);
   const script: VideoScript = JSON.parse(fs.readFileSync(scriptPath, "utf-8"));
-
   const audioDir = path.resolve(projectRoot, config.audioDir);
   fs.mkdirSync(audioDir, { recursive: true });
 
-  const modelId = config.narration.modelId;
-  const { stability, similarityBoost, style } = config.narration.voiceSettings;
-
   console.log(`Generating audio for ${script.slides.length} slides...`);
-  console.log(`  Voice: ${voiceId} | Model: ${modelId} | Lang: ${config.narration.language}`);
+  console.log(`  Provider: ${provider.id} | Lang: ${config.narration.language}`);
 
   const slideTimings: SlideAudioTiming[] = [];
-
   for (const slide of script.slides) {
-    if (!slide.narration.trim()) {
-      console.log(`Skipping ${slide.id} (no narration)`);
-      slideTimings.push({ slideId: slide.id, durationMs: 0 });
-      continue;
-    }
-
-    console.log(`Generating: ${slide.id}...`);
-    const timing = await generateSlideAudio(
-      apiKey,
-      voiceId,
-      modelId,
-      { stability, similarity_boost: similarityBoost, style },
-      slide.id,
-      slide.narration,
-      audioDir
-    );
-    slideTimings.push(timing);
-
-    await sleep(RATE_LIMIT_DELAY_MS);
+    slideTimings.push(await processSlide(provider, slide.id, slide.narration, audioDir, force));
   }
 
-  const manifest = buildManifest(voiceId, slideTimings);
-  const manifestPath = path.join(audioDir, "manifest.json");
+  const manifest = buildManifest(provider, config.narration.voiceId, slideTimings);
+  const manifestPath = path.join(audioDir, MANIFEST_FILENAME);
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
-  console.log(`\nDone! Total duration: ${(manifest.totalDurationMs / 1000).toFixed(1)}s`);
+  console.log(`\nDone! Total duration: ${formatSeconds(manifest.totalDurationMs)}`);
   console.log(`Manifest: ${manifestPath}`);
 }
 
-interface VoiceSettings {
-  stability: number;
-  similarity_boost: number;
-  style: number;
+/** Returns the slide's timing: skipped, reused from cache, or freshly generated */
+export async function processSlide(
+  provider: TtsProvider,
+  slideId: string,
+  narration: string,
+  audioDir: string,
+  force: boolean
+): Promise<SlideAudioTiming> {
+  if (!narration.trim()) {
+    console.log(`Skipping ${slideId} (no narration)`);
+    return { slideId, durationMs: 0 };
+  }
+
+  const sourceHash = hashSpeechSource(provider, narration);
+  const cached = force ? undefined : readCachedTiming(audioDir, slideId, sourceHash);
+  if (cached) {
+    console.log(`Reusing: ${slideId} (unchanged) ${formatSeconds(cached.durationMs)}`);
+    return cached;
+  }
+
+  console.log(`Generating: ${slideId}...`);
+  const timing = await generateSlideAudio(provider, slideId, narration, sourceHash, audioDir);
+  await sleep(RATE_LIMIT_DELAY_MS);
+  return timing;
+}
+
+/** Hash of the text plus every provider setting that changes the sound */
+function hashSpeechSource(provider: TtsProvider, text: string): string {
+  return crypto.createHash("sha256").update(provider.cacheKey()).update("\n").update(text).digest("hex");
+}
+
+/** Previous timing for this slide, only if it was made from the same inputs */
+function readCachedTiming(
+  audioDir: string,
+  slideId: string,
+  sourceHash: string
+): SlideAudioTiming | undefined {
+  const timingPath = path.join(audioDir, `${slideId}-timing.json`);
+  const audioPath = path.join(audioDir, `${slideId}.mp3`);
+  if (!fs.existsSync(timingPath) || !fs.existsSync(audioPath)) return undefined;
+  try {
+    const timing: SlideAudioTiming = JSON.parse(fs.readFileSync(timingPath, "utf-8"));
+    return timing.sourceHash === sourceHash && timing.durationMs > 0 ? timing : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function generateSlideAudio(
-  apiKey: string,
-  voiceId: string,
-  modelId: string,
-  voiceSettings: VoiceSettings,
+  provider: TtsProvider,
   slideId: string,
   text: string,
+  sourceHash: string,
   outputDir: string
 ): Promise<SlideAudioTiming> {
-  const url = `${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}/with-timestamps`;
+  const result = await withRetry(slideId, () => provider.synthesize(text));
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "xi-api-key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      text,
-      model_id: modelId,
-      output_format: OUTPUT_FORMAT,
-      voice_settings: voiceSettings,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ElevenLabs API error for ${slideId}: ${response.status} ${errorText}`);
-  }
-
-  const data: ElevenLabsTimestampResponse = await response.json();
-
-  const audioBuffer = Buffer.from(data.audio_base64, "base64");
   const audioPath = path.join(outputDir, `${slideId}.mp3`);
-  fs.writeFileSync(audioPath, audioBuffer);
+  fs.writeFileSync(audioPath, result.audio);
+  const durationMs = measureAudioDurationMs(audioPath);
 
-  const characters = data.alignment.characters.map((char, i) => ({
-    character: char,
-    startMs: Math.round(data.alignment.character_start_times_seconds[i] * 1000),
-    endMs: Math.round(data.alignment.character_end_times_seconds[i] * 1000),
-  }));
-
-  const durationMs = characters.length > 0
-    ? characters[characters.length - 1].endMs
-    : 0;
-
+  const timing: SlideAudioTiming = { slideId, durationMs, sourceHash, characters: result.characters };
   const timingPath = path.join(outputDir, `${slideId}-timing.json`);
-  fs.writeFileSync(timingPath, JSON.stringify({ slideId, durationMs, characters }, null, 2));
+  fs.writeFileSync(timingPath, JSON.stringify(timing, null, 2));
 
-  console.log(`  ${slideId}: ${(durationMs / 1000).toFixed(1)}s`);
-
-  return { slideId, durationMs, characters };
+  console.log(`  ${slideId}: ${formatSeconds(durationMs)}`);
+  return timing;
 }
 
 function buildManifest(
+  provider: TtsProvider,
   voiceId: string,
   slideTimings: SlideAudioTiming[]
 ): AudioManifest {
@@ -159,17 +138,25 @@ function buildManifest(
 
   return {
     generatedAt: new Date().toISOString(),
+    provider: provider.id,
     voiceId,
     totalDurationMs,
     slides: slideTimings,
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function formatSeconds(ms: number): string {
+  return `${(ms / MS_PER_SECOND).toFixed(1)}s`;
 }
 
-main().catch((error) => {
-  console.error("Audio generation failed:", error);
-  process.exit(1);
-});
+// Run only from the command line; tests import processSlide without side effects
+if (require.main === module) {
+  main().catch((error) => {
+    if (error instanceof TtsSetupError) {
+      console.error(error.message);
+    } else {
+      console.error("Audio generation failed:", error);
+    }
+    process.exit(1);
+  });
+}

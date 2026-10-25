@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, staticFile } from "remotion";
 import { ProgressBar } from "../components/ProgressBar";
 import { ImageSlideData } from "../types";
+import { COLORS } from "../constants";
 
 interface ImageSlideProps {
   data: ImageSlideData;
@@ -21,7 +22,7 @@ export const ImageSlide: React.FC<ImageSlideProps> = ({
   totalSlides,
 }) => {
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+    <AbsoluteFill style={{ backgroundColor: COLORS.IMAGE_BACKDROP }}>
       <img
         src={staticFile(data.imagePath)}
         style={{

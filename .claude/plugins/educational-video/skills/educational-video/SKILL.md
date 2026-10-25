@@ -66,7 +66,9 @@ cd "$PIPELINE_DIR" && npm install
 ```
 Tell the user: `"Installing dependencies... (one-time, ~1 minute)"`
 
-**Check 3: ElevenLabs API key**
+**Check 3: Voice engine API key**
+
+The voice engine is `narration.provider` in `$PIPELINE_DIR/video.config.json` (default and currently only engine: `elevenlabs`; engines live in `scripts/tts/`). The checks below are for ElevenLabs.
 
 Read `$PIPELINE_DIR/.env`. Check for `ELEVENLABS_API_KEY` with a real value (not empty/placeholder).
 
@@ -110,20 +112,24 @@ Then:
 
 ### Phase 1b — PPTX to Images
 
-1. Check if LibreOffice is installed: `soffice --version`
+1. Pick a converter, in this order:
 
-   - **LibreOffice found:**
-     ```bash
-     mkdir -p "$PIPELINE_DIR/public/pptx-slides"
-     soffice --headless --convert-to png --outdir "$PIPELINE_DIR/public/pptx-slides/" "<pptx-path>"
-     ```
-     Note: LibreOffice does NOT extract speaker notes. Skip the notes check below.
-
-   - **LibreOffice not found:** use PowerShell (requires Microsoft Office):
+   - **Windows with Microsoft PowerPoint** (preferred — also extracts speaker notes):
      ```bash
      powershell -ExecutionPolicy Bypass -File "$PIPELINE_DIR/scripts/pptx-to-images.ps1" -PptxPath "<pptx-path>" -OutDir "$PIPELINE_DIR/public/pptx-slides"
      ```
-     This also exports `slide-notes.json` with speaker notes per slide.
+     Exports `Slide1.PNG`, `Slide2.PNG`, ... at 1920 px wide, plus `slide-notes.json` with speaker notes per slide.
+
+   - **LibreOffice + pdftoppm** (`soffice --version` and `pdftoppm -v` both work):
+     ```bash
+     mkdir -p "$PIPELINE_DIR/temp" "$PIPELINE_DIR/public/pptx-slides"
+     soffice --headless --convert-to pdf --outdir "$PIPELINE_DIR/temp" "<pptx-path>"
+     pdftoppm -png -scale-to-x 1920 -scale-to-y -1 "$PIPELINE_DIR/temp/<pptx-name>.pdf" "$PIPELINE_DIR/public/pptx-slides/slide"
+     ```
+     Do NOT use `soffice --convert-to png` directly: it exports only the first slide.
+     pdftoppm names files `slide-1.png` … (zero-padded, e.g. `slide-01.png`, when the deck has 10+ slides).
+     LibreOffice does NOT extract speaker notes. Skip the notes check below.
+     pdftoppm comes with Poppler (Windows: `winget install oschwartz10612.Poppler`; macOS: `brew install poppler`; Linux: `poppler-utils`).
 
    - **Neither available:**
      > To convert PowerPoint slides, you need LibreOffice (free) or Microsoft Office.
@@ -167,7 +173,7 @@ Then:
    }
    ```
    Use the **exact filename and extension case** from step 2.
-   LibreOffice: `<filename>-<N>.png` | PowerShell COM: `Slide1.PNG`, `Slide2.PNG`, ...
+   PowerShell COM: `Slide1.PNG`, `Slide2.PNG`, ... | pdftoppm: `slide-1.png` or `slide-01.png`, ...
 
 6. Proceed to Phase 2.
 
@@ -187,6 +193,7 @@ Write `$PIPELINE_DIR/video.config.json`:
 ```json
 {
   "narration": {
+    "provider": "elevenlabs",
     "language": "<chosen-language-code>",
     "voiceId": "",
     "modelId": "eleven_v3",
@@ -198,7 +205,8 @@ Write `$PIPELINE_DIR/video.config.json`:
   "audioDir": "public/audio"
 }
 ```
-Leave `voiceId` empty — `generate-audio.ts` falls back to `ELEVENLABS_VOICE_ID` from `.env`.
+Leave `voiceId` empty — the ElevenLabs engine falls back to `ELEVENLABS_VOICE_ID` from `.env`.
+Keep any `provider` value already in the file; only change it if the user asks for another voice engine.
 
 ---
 
@@ -217,6 +225,7 @@ Generate `$PIPELINE_DIR/content/video-script.json` using:
 - Slide IDs: `slide-01`, `slide-02`, ... zero-padded
 - Every slide: non-empty `narration`, 2–4 sentences in the chosen language
 - Code: ≤15 lines | Flow: 3–5 nodes | Diagram: ≤3 rows × 4 cols
+- Short chart text: flow labels ≤ 14 characters, diagram labels ≤ 16, edge labels ≤ 15 (longer text is shrunk; very long text spills out of its box)
 
 **Rules (PPTX source):**
 - One `image` slide per original slide (split dense ones into 2 if needed)
@@ -255,6 +264,12 @@ You can:
 
 **Loop:** apply changes and re-show preview until the user confirms.
 
+**Before moving on, validate the script** (it costs nothing; audio costs credits):
+```bash
+cd "$PIPELINE_DIR" && npx tsx scripts/validate-script.ts
+```
+Fix every `ERROR` line (they break the render: missing image, ragged table, edge to a missing node). Fix `WARNING` lines unless the user prefers otherwise. Re-run until it reports 0 errors.
+
 ---
 
 ## Phase 5 — Audio Generation
@@ -263,12 +278,14 @@ Tell the user: `"Generating voice narration for [N] slides... (~30–90 seconds)
 
 Run in **background**:
 ```bash
-cd "$PIPELINE_DIR" && rm -rf public/audio/*.mp3 public/audio/*.json && npx tsx scripts/generate-audio.ts > audio-gen.log 2>&1
+cd "$PIPELINE_DIR" && npx tsx scripts/generate-audio.ts > audio-gen.log 2>&1
 ```
+Do not delete `public/audio/` first. Slides whose narration and voice settings are unchanged are reused (`Reusing:` in the log) and cost no credits. Add `--force` only if the user wants every slide re-recorded.
+Rate limits and server errors are retried automatically (`retrying in` lines); only report a failure if the run exits.
 
 Poll `$PIPELINE_DIR/audio-gen.log` every 10–15 seconds:
 ```bash
-grep -E "Generating:|slide-[0-9]+" "$PIPELINE_DIR/audio-gen.log" | tail -3
+grep -E "Generating:|Reusing:|retrying|slide-[0-9]+" "$PIPELINE_DIR/audio-gen.log" | tail -3
 ```
 
 On completion (detect `Done! Total duration:`), show the duration.
@@ -342,12 +359,15 @@ Diagram node colors: `"blue"`, `"green"`, `"orange"`, `"purple"`, `"red"`
 
 ## Quality Checklist (verify before audio)
 
-- [ ] All slide IDs unique, format `slide-XX`
-- [ ] Every slide has non-empty `narration`
-- [ ] First = `title`, last = `outro`
-- [ ] Section headers have incrementing `stageNumber`
-- [ ] Code blocks ≤ 15 lines
-- [ ] Diagram nodes have valid `row`/`col` positions
-- [ ] Table rows match header column count
-- [ ] Flow nodes: 3–5 entries
-- [ ] Image slides: `imagePath` matches an actual file in `public/pptx-slides/`
+`scripts/validate-script.ts` checks the items marked *(auto)*.
+
+- [ ] All slide IDs unique, format `slide-XX` *(auto)*
+- [ ] Every slide has non-empty `narration` *(auto)*
+- [ ] First = `title`, last = `outro` *(auto)*
+- [ ] Section headers have incrementing `stageNumber` *(auto)*
+- [ ] Code blocks ≤ 15 lines *(auto)*
+- [ ] Diagram nodes have valid, distinct `row`/`col` positions; edges point at real nodes *(auto)*
+- [ ] Table rows match header column count *(auto)*
+- [ ] Flow nodes: 3–5 entries; labels short enough to fit *(auto)*
+- [ ] Image slides: `imagePath` matches an actual file in `public/pptx-slides/`, same letter case *(auto)*
+- [ ] Narration reads naturally aloud in the chosen language
